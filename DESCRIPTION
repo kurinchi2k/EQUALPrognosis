@@ -1,0 +1,14 @@
+Package: EQUALPrognosis
+Title: A package for analysing prognostic studies
+Version: 0.1.0
+Date: 2026-01-16
+Authors@R: person("Kurinchi", "Gurusamy", role = c("aut", "cre"), email = "k.gurusamy@ucl.ac.uk")
+Author: Kurinchi Gurusamy [aut, cre]
+Maintainer: Kurinchi Gurusamy <k.gurusamy@ucl.ac.uk>
+Depends: stats, ggplot2, survival
+Imports: base64enc, CalibrationCurves, mime, predtools,  pROC, stringr 
+Description: A suite of functions that help with analysis of prognostic study data. Gurusamy,K (2026)<https://github.com/kurinchi2k/EQUALPrognosis>.
+License: GPL (>= 3)
+Encoding: UTF-8
+URL: https://sites.google.com/view/equal-group/home
+RoxygenNote: 7.3.2
