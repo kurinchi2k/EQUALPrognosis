@@ -1,5 +1,5 @@
 Package: EQUALPrognosis
-Title: A package for analysing prognostic studies
+Title: A Package for Analysing Prognostic Studies
 Version: 0.1.0
 Date: 2026-01-16
 Authors@R: person("Kurinchi", "Gurusamy", role = c("aut", "cre"), email = "k.gurusamy@ucl.ac.uk")
