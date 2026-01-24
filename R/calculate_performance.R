@@ -164,7 +164,7 @@ calculate_performance <- function(outcome_type, time, outcome_count, actual, pre
     df <- cbind.data.frame(actual = actual, predicted = predicted, back_transformed_lp = back_transformed_lp)
     if (outcome_type == "time-to-event") {
       df <- cbind.data.frame(df, time = time)
-      df$actual <- as.numeric(as.character(df$actual))
+      df$actual <- as.numeric(df$actual)
     }
     intercept_slope <- suppressWarnings(try(eval(parse(text = intercept_slope_text)), silent = TRUE))
     if (TRUE %in% (class(intercept_slope)) == "try-error") {

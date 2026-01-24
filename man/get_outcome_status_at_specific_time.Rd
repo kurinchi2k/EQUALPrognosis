@@ -30,7 +30,6 @@ updated status and time. The original status and time are available with a prefi
 Kurinchi Gurusamy
 }
 \examples{
-\dontrun{
 library(survival)
 # Use the dataset colon as example
 # Replace existing status with the status at 365 days
@@ -38,6 +37,7 @@ results <- get_outcome_status_at_specific_time(df = colon,
 status_field = "status", time_field = "time", specific_time = 365)
 results$outcome
 results$message
+# Display first 10 rows to show how the status and time have been modified
 results$new_data[1:10, c("status", "time", "unmodified_status", "unmodified_time")]
 }
-}
+

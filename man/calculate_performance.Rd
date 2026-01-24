@@ -128,43 +128,54 @@ Kurinchi Gurusamy
 \code{\link[pROC]{roc}}
 }
 \examples{
-\dontrun{
 library(survival)
 colon$status <- factor(as.character(colon$status))
+# For testing, only 5 simulations are used here. Usually at least 300 to 500
+# simulations are a minimum. Increasing the simulations leads to more reliable results.
+# The default value of 2000 simulations should provide reasonably reliable results.
 generic_input_parameters <- create_generic_input_parameters(
-  general_title = "Prediction of colon cancer death", simulations = 2000,
-  simulations_per_file = 100, seed = 1, df = colon, outcome_name = "status",
-  outcome_type = "time-to-event", outcome_time = "time", outcome_count = FALSE)
+  general_title = "Prediction of colon cancer death", simulations = 5,
+  simulations_per_file = 20, seed = 1, df = colon, outcome_name = "status",
+  outcome_type = "time-to-event", outcome_time = "time", outcome_count = FALSE,
+  verbose = FALSE)$generic_input_parameters
 analysis_details <- cbind.data.frame(
   name = c('age', 'single_mandatory_predictor', 'complex_models',
-           'complex_models_only_optional_predictors'),
+           'complex_models_only_optional_predictors', 'predetermined_model_text'),
   analysis_title = c('Simple cut-off based on age', 'Single mandatory predictor (rx)',
                      'Multiple mandatory and optional predictors',
-                     'Multiple optional predictors only'),
-  develop_model = c(FALSE, TRUE, TRUE, TRUE),
-  mandatory_predictors = c(NA, 'rx', 'rx; differ; perfor; adhere; extent', NA),
-  optional_predictors = c(NA, NA, 'sex; age; nodes', 'rx; differ; perfor'),
-  mandatory_interactions = c(NA, NA, 'rx; differ; extent', NA),
-  optional_interactions = c(NA, NA, 'perfor; adhere; sex; age; nodes', 'rx; differ'),
-  model_threshold_method = c(NA, 'youden', 'youden', 'youden'),
-  scoring_system = c('age', NA, NA, NA),
-  predetermined_threshold = c('60', NA, NA, NA),
-  higher_values_event = c(TRUE, NA, NA, NA)
+                     'Multiple optional predictors only', 'Predetermined model text'),
+  develop_model = c(FALSE, TRUE, TRUE, TRUE, TRUE),
+  predetermined_model_text = c(NA, NA, NA, NA,
+  "cph(Surv(time, status) ~ rx * age, data = df_training_complete, x = TRUE, y = TRUE)"),
+  mandatory_predictors = c(NA, 'rx', 'rx; differ; perfor; adhere; extent', NA, "rx; age"),
+  optional_predictors = c(NA, NA, 'sex; age; nodes', 'rx; differ; perfor', NA),
+  mandatory_interactions = c(NA, NA, 'rx; differ; extent', NA, NA),
+  optional_interactions = c(NA, NA, 'perfor; adhere; sex; age; nodes', 'rx; differ', NA),
+  model_threshold_method = c(NA, 'youden', 'youden', 'youden', 'youden'),
+  scoring_system = c('age', NA, NA, NA, NA),
+  predetermined_threshold = c('60', NA, NA, NA, NA),
+  higher_values_event = c(TRUE, NA, NA, NA, NA)
 )
 write.csv(analysis_details, paste0(tempdir(), "/analysis_details.csv"),
           row.names = FALSE, na = "")
 analysis_details_path <- paste0(tempdir(), "/analysis_details.csv")
-specific_input_parameters <- create_specific_input_parameters(
+# verbose is TRUE as default. If you do not want the outcome displayed, you can
+# change this to FALSE
+results <- create_specific_input_parameters(
   generic_input_parameters = generic_input_parameters,
-  analysis_details_path = analysis_details_path)
+  analysis_details_path = analysis_details_path, verbose = TRUE)
+specific_input_parameters <- results$specific_input_parameters
+# Set a seed for reproducibility - Please see details above
+set.seed(generic_input_parameters$seed)
 prepared_datasets <- {prepare_datasets(
   df = generic_input_parameters$df,
   simulations = generic_input_parameters$simulations,
-  seed = generic_input_parameters$seed,
   outcome_name = generic_input_parameters$outcome_name,
   outcome_type = generic_input_parameters$outcome_type,
-  outcome_time = generic_input_parameters$outcome_time)
-}
+  outcome_time = generic_input_parameters$outcome_time,
+  verbose = TRUE)}
+# There is no usually no requirement to call this function directly. This is used
+# by the perform_analysis function to create the actual and predicted values.
 specific_input_parameters_each_analysis <- specific_input_parameters[[1]]
 actual_predicted_results_apparent <- {calculate_actual_predicted(
       prepared_datasets = prepared_datasets,
@@ -173,6 +184,8 @@ actual_predicted_results_apparent <- {calculate_actual_predicted(
       outcome_time = generic_input_parameters$outcome_time,
       outcome_count = generic_input_parameters$outcome_count,
       develop_model = specific_input_parameters_each_analysis$develop_model,
+      predetermined_model_text =
+      specific_input_parameters_each_analysis$predetermined_model_text,
       mandatory_predictors = specific_input_parameters_each_analysis$mandatory_predictors,
       optional_predictors = specific_input_parameters_each_analysis$optional_predictors,
       mandatory_interactions = specific_input_parameters_each_analysis$mandatory_interactions,
@@ -181,7 +194,7 @@ actual_predicted_results_apparent <- {calculate_actual_predicted(
       scoring_system = specific_input_parameters_each_analysis$scoring_system,
       predetermined_threshold = specific_input_parameters_each_analysis$predetermined_threshold,
       higher_values_event = specific_input_parameters_each_analysis$higher_values_event,
-      each_simulation = 1, bootstrap_sample = FALSE
+      each_simulation = 1, bootstrap_sample = FALSE, verbose = TRUE
     )}
   bootstrap_results <- lapply(1:generic_input_parameters$simulations,
   function(each_simulation) {
@@ -192,6 +205,8 @@ actual_predicted_results_apparent <- {calculate_actual_predicted(
     outcome_time = generic_input_parameters$outcome_time,
     outcome_count = generic_input_parameters$outcome_count,
     develop_model = specific_input_parameters_each_analysis$develop_model,
+    predetermined_model_text =
+      specific_input_parameters_each_analysis$predetermined_model_text,
     mandatory_predictors = specific_input_parameters_each_analysis$mandatory_predictors,
     optional_predictors = specific_input_parameters_each_analysis$optional_predictors,
     mandatory_interactions = specific_input_parameters_each_analysis$mandatory_interactions,
@@ -200,7 +215,7 @@ actual_predicted_results_apparent <- {calculate_actual_predicted(
     scoring_system = specific_input_parameters_each_analysis$scoring_system,
     predetermined_threshold = specific_input_parameters_each_analysis$predetermined_threshold,
     higher_values_event = specific_input_parameters_each_analysis$higher_values_event,
-    each_simulation = each_simulation, bootstrap_sample = TRUE
+    each_simulation = each_simulation, bootstrap_sample = TRUE, verbose = TRUE
   )
 })
 apparent_performance <- {cbind.data.frame(
@@ -214,5 +229,4 @@ apparent_performance <- {cbind.data.frame(
     develop_model = specific_input_parameters_each_analysis$develop_model,
     lp = actual_predicted_results_apparent$lp_all_subjects
   ))}
-}
 }

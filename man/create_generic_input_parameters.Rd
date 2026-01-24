@@ -10,7 +10,7 @@ possible (i.e., when there were minor correctable issues in the input parameters
 }
 \usage{
 create_generic_input_parameters(general_title, simulations, simulations_per_file,
-seed, df, outcome_name, outcome_type, outcome_time, outcome_count)
+seed, df, outcome_name, outcome_type, outcome_time, outcome_count, verbose)
 }
 \arguments{
 \item{general_title}{A general title for your analysis}
@@ -18,7 +18,7 @@ seed, df, outcome_name, outcome_type, outcome_time, outcome_count)
 simulations are a minimum. Increasing the simulations leads to more reliable results.
 The default value of 2000 simulations should provide reasonably reliable results.}
 \item{simulations_per_file}{This is to manage the memory requirements. The default
-value of 100 simulations per file should work in most instances.}
+value of 20 simulations per file should work in most instances.}
 \item{seed}{Please see \code{\link{prepare_datasets}} for details.}
 \item{df}{The dataset used for the analysis. This must be provided as a
 dataframe. Data in files can be converted to dataframes with appropriate field types
@@ -34,11 +34,16 @@ is applicable only for \emph{'time-to-event'} outcome. For other outcome types,
 enter \emph{NA}.}
 \item{outcome_count}{\emph{TRUE} if the outcome was a count outcome and \emph{FALSE}
 otherwise.}
+\item{verbose}{\emph{TRUE} if the outcome message must be displayed and \emph{FALSE}
+otherwise.}
 }
 \value{
-\item{generic_input_parameters}{If successful, a list with information for further analyses.
-If some corrections were made, the corrections are displayed. If there was a fatal error,
-the reason for the fatal error is displayed and the output is \emph{NULL}.}
+\item{outcome}{The outcome containing the processing details. If some corrections
+were made, the corrections are included in the outcome. If there was a fatal error,
+the reason for the fatal error is provided.}
+\item{generic_input_parameters}{A list with information for further analyses. If there
+was a fatal error, the reason for the fatal error is displayed and
+generic_input_parameters is \emph{NULL}.}
 }
 \author{
 Kurinchi Gurusamy
@@ -48,56 +53,70 @@ Kurinchi Gurusamy
 \code{\link{prepare_datasets}}
 }
 \examples{
-\dontrun{
 # Correct parameters ####
 # Binary outcome
-generic_input_parameters <- create_generic_input_parameters(
+# verbose is TRUE, therefore, the outcome message will be displayed
+results <- create_generic_input_parameters(
 general_title = "Prediction of penguin species", simulations = 2000,
-simulations_per_file = 100, seed = 1, df = penguins, outcome_name = "species",
-outcome_type = "binary", outcome_time = NA, outcome_count = FALSE)
+simulations_per_file = 20, seed = 1, df = penguins, outcome_name = "species",
+outcome_type = "binary", outcome_time = NA, outcome_count = FALSE, verbose = TRUE)
+generic_input_parameters <- results$generic_input_parameters
 generic_input_parameters
 
 # Time-to-event outcome
 library(survival)
 # The field 'status' is provided as numeric. This must be converted to factor. In
-this example, we can convert this to factor using a command. For conversion of more
-columns, please use \code{\link{process_data}}.
+# this example, we can convert this to factor using a command. For conversion of more
+# columns, please use process_data function.
 colon$status <- factor(as.character(colon$status))
-generic_input_parameters <- create_generic_input_parameters(
+# verbose is FALSE, therefore, the outcome message will not be displayed, but the
+# outcome is stored.
+results <- create_generic_input_parameters(
 general_title = "Prediction of colon cancer death", simulations = 2000,
-simulations_per_file = 100, seed = 1, df = colon, outcome_name = "status",
-outcome_type = "time-to-event", outcome_time = "time", outcome_count = FALSE)
+simulations_per_file = 20, seed = 1, df = colon, outcome_name = "status",
+outcome_type = "time-to-event", outcome_time = "time", outcome_count = FALSE,
+verbose = FALSE)
+# Display outcome
+results$outcome
+# Display generic_input_parameters
+generic_input_parameters <- results$generic_input_parameters
 generic_input_parameters
 
 # Continuous outcome
-generic_input_parameters <- create_generic_input_parameters(
+# verbose is not supplied, therefore, the outcome message will be displayed as
+# this is the default.
+results <- create_generic_input_parameters(
 general_title = "Prediction of iris petal length", simulations = 2000,
-simulations_per_file = 100, seed = 1, df = iris, outcome_name = "Petal.Length",
+simulations_per_file = 20, seed = 1, df = iris, outcome_name = "Petal.Length",
 outcome_type = "quantitative", outcome_time = NA, outcome_count = FALSE)
+generic_input_parameters <- results$generic_input_parameters
 generic_input_parameters
 
 # Count outcomes
-generic_input_parameters <- create_generic_input_parameters(
+results <- create_generic_input_parameters(
 general_title = "Prediction of warp breaks", simulations = 2000,
-simulations_per_file = 100, seed = 1, df = warpbreaks, outcome_name = "breaks",
+simulations_per_file = 20, seed = 1, df = warpbreaks, outcome_name = "breaks",
 outcome_type = "quantitative", outcome_time = NA, outcome_count = TRUE)
+generic_input_parameters <- results$generic_input_parameters
 generic_input_parameters
 
 # Non fatal errors ####
-generic_input_parameters <- create_generic_input_parameters(
+results <- create_generic_input_parameters(
 general_title = "", simulations = "Use default",
 simulations_per_file = "Use default", seed = "Use default",
 df = warpbreaks, outcome_name = "breaks",
-outcome_type = "quantitative", outcome_time = "Use default", outcome_count = TRUE)
+outcome_type = "quantitative", outcome_time = "Use default", outcome_count = TRUE,
+verbose = TRUE)
+generic_input_parameters <- results$generic_input_parameters
 generic_input_parameters
 
 # Fatal error ####
 # Note the dataframe name supplied within quotes.
-generic_input_parameters <- create_generic_input_parameters(
+results <- create_generic_input_parameters(
 general_title = "", simulations = "Use default",
 simulations_per_file = "Use default", seed = "Use default",
-df = "warpbreaks", outcome_name = "breaks",
-outcome_type = "quantitative", outcome_time = "Use default", outcome_count = TRUE)
+df = "warpbreaks", outcome_name = "breaks", outcome_type = "quantitative",
+outcome_time = "Use default", outcome_count = TRUE, verbose = TRUE)
+generic_input_parameters <- results$generic_input_parameters
 generic_input_parameters
-}
 }

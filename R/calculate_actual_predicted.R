@@ -1,4 +1,4 @@
-calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_type, outcome_time, outcome_count, develop_model = TRUE, mandatory_predictors, optional_predictors, mandatory_interactions = NULL, optional_interactions = NULL, model_threshold_method = "youden", scoring_system = NA, predetermined_threshold = NA, higher_values_event = NA, each_simulation = 1, bootstrap_sample = TRUE) {
+calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_type, outcome_time, outcome_count, develop_model = TRUE, predetermined_model_text, mandatory_predictors, optional_predictors, mandatory_interactions = NULL, optional_interactions = NULL, model_threshold_method = "youden", scoring_system = NA, predetermined_threshold = NA, higher_values_event = NA, each_simulation = 1, bootstrap_sample = TRUE, verbose = TRUE) {
   # Functions ####
   calculate_heuristic_threshold <- function(lp, actual) {
     mean_no_event <- try(mean(lp[actual == levels(as.factor(actual))[[1]]], na.rm = TRUE), silent = TRUE)
@@ -41,9 +41,11 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
       # Cumulative hazard of the first subject at the time point closest to the subject
       htz <- base_hazard[closest_time_row, 1]
       variable_values_first_subject <- cbind.data.frame(t(training_model_matrix[1,coef_table$names]))
+      colnames(variable_values_first_subject) <- coef_table$names
       variable_values_first_subject[1:nrow(new_data),] <- variable_values_first_subject
-      variable_values_new_data_minus_first_subject <- new_data_model_matrix[,coef_table$names] -
-        variable_values_first_subject
+      variable_values_new_data_minus_first_subject <- data.frame(new_data_model_matrix[,coef_table$names] -
+                                                                   variable_values_first_subject[,coef_table$names])
+      colnames(variable_values_new_data_minus_first_subject) <- coef_table$names
       each_term <- lapply(1:nrow(coef_table), function(x) {
         output <- coef_table$coef[x] * variable_values_new_data_minus_first_subject[,coef_table$names[x]]
         output[is.na(output)] <- 0
@@ -88,6 +90,7 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
       coef = coef(regression_model)
     )}
     coef_table <- coef_table[! is.na(coef_table$coef),]
+    coef_table <- coef_table[coef_table$names %in% c(variables_in_model_summary$names_in_coefficient_table, "(Intercept)"),]
     coef_table$interaction_term <- (nchar(coef_table$names) != nchar(gsub(":", "", coef_table$names)))
     training_model_frame <- model.frame(regression_model)
     training_model_matrix <- model.matrix(regression_model)
@@ -142,9 +145,11 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
       # Cumulative hazard of the first subject at the time point closest to the subject
       htz <- base_hazard[closest_time_row, 1]
       variable_values_first_subject <- cbind.data.frame(t(training_model_matrix[1,coef_table$names]))
+      colnames(variable_values_first_subject) <- coef_table$names
       variable_values_first_subject[1:nrow(new_data),] <- variable_values_first_subject
-      variable_values_new_data_minus_first_subject <- new_data_model_matrix[,coef_table$names] -
-        variable_values_first_subject
+      variable_values_new_data_minus_first_subject <- data.frame(new_data_model_matrix[,coef_table$names] -
+                                                                   variable_values_first_subject[,coef_table$names])
+      colnames(variable_values_new_data_minus_first_subject) <- coef_table$names
       each_term <- lapply(1:nrow(coef_table), function(x) {
         output <- coef_table$coef[x] * variable_values_new_data_minus_first_subject[,coef_table$names[x]]
         output[is.na(output)] <- 0
@@ -369,6 +374,13 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
     r_object_content <- gsub(" ", "&nbsp;", r_object_content)
     output <- paste0('<p>', paste0(r_object_content, collapse = "<br>"), '</p>')
   }
+  remove_dropped_predictors_from_models <- function(model_text, dropped_moderators) {
+    updated_model_text <- model_text
+    for (i in 1:length(dropped_moderators)) {
+      updated_model_text <- gsub(dropped_moderators[i], 0, updated_model_text)
+    }
+    return(updated_model_text)
+  }
   # Start analysis ####
   html_file <- list()
   if (
@@ -382,32 +394,39 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
       actual_training = actual_training,
       predicted_training = NA,
       predicted_training_calibration_adjusted = NA,
+      predicted_training_adjusted_mandatory_predictors_only = NA,
       actual_only_validation = actual_only_validation,
       predicted_only_validation = NA,
       predicted_only_validation_calibration_adjusted = NA,
+      predicted_only_validation_adjusted_mandatory_predictors_only = NA,
       actual_all_subjects = actual_all_subjects,
       predicted_all_subjects = NA,
       predicted_all_subjects_calibration_adjusted = NA,
+      predicted_all_subjects_adjusted_mandatory_predictors_only = NA,
       lp_training = NA,
       lp_only_validation = NA,
       lp_all_subjects = NA,
       lp_training_calibration_adjusted = NA,
       lp_only_validation_calibration_adjusted = NA,
       lp_all_subjects_calibration_adjusted = NA,
+      lp_training_adjusted_mandatory_predictors_only = NA,
+      lp_only_validation_adjusted_mandatory_predictors_only = NA,
+      lp_all_subjects_adjusted_mandatory_predictors_only = NA,
       time_training = NA,
       time_only_validation = NA,
       time_all_subjects = NA,
       regression_model = NA,
+      df_all_subjects = df_all_subjects,
       html_file = html_file,
       outcome = "One or more mandatory fields are missing. For model development, the mandatory fields are model_text and additional_fields_to_include. For preexisting scoring systems, the mandatory fields are scoring_sytem, predetermined_threshold or predetermined_threshold_direction for binary and time-to-event outcomes, and scoring_sytem and quantitative variable formula for quantitative outcomes."
     )}
   } else {
     # Set-up ####
     if (bootstrap_sample == TRUE) {
-      cat(paste0(each_simulation, "..."))
+      if(verbose == TRUE) {cat(paste0(each_simulation, "..."))}
       df_training <- prepared_datasets$df_training_list[[each_simulation]]
     } else {
-      cat(paste0("Apparent performance..."))
+      if(verbose == TRUE) {cat(paste0("Apparent performance..."))}
       # Instead of the training data set provide the complete data set as the training set.
       df_training <- prepared_datasets$df_all_subjects_list[[each_simulation]]
     }
@@ -464,28 +483,36 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
         actual_training = actual_training,
         predicted_training = predicted_training,
         predicted_training_calibration_adjusted = NA,
+        predicted_training_adjusted_mandatory_predictors_only = NA,
         actual_only_validation = actual_only_validation,
         predicted_only_validation = predicted_only_validation,
         predicted_only_validation_calibration_adjusted = NA,
+        predicted_only_validation_adjusted_mandatory_predictors_only = NA,
         actual_all_subjects = actual_all_subjects,
         predicted_all_subjects = predicted_all_subjects,
         predicted_all_subjects_calibration_adjusted = NA,
+        predicted_all_subjects_adjusted_mandatory_predictors_only = NA,
         lp_training = NA,
         lp_only_validation = NA,
         lp_all_subjects = NA,
         lp_training_calibration_adjusted = NA,
         lp_only_validation_calibration_adjusted = NA,
         lp_all_subjects_calibration_adjusted = NA,
+        lp_training_adjusted_mandatory_predictors_only = NA,
+        lp_only_validation_adjusted_mandatory_predictors_only = NA,
+        lp_all_subjects_adjusted_mandatory_predictors_only = NA,
         time_training = NA,
         time_only_validation = NA,
         time_all_subjects = NA,
         regression_model = NA,
+        df_all_subjects = df_all_subjects,
         html_file = html_file,
         outcome = "Successful"
       )}
     }
     # For model development ####
     if (develop_model == TRUE) {
+      # Set-up ####
       if (is.na(mandatory_predictors)) {
         mandatory_predictors <- NULL
       } else {
@@ -516,48 +543,69 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
       levels_with_data <- sapply(1:ncol(df_training_complete), function(y) {length(table(df_training_complete[,y])[table(df_training_complete[,y]) > 0])})
       # Update the models (after removing these moderators with only one level)
       updated_moderators <- setdiff(colnames(df_training_complete), colnames(df_training_complete)[which(levels_with_data < 2)])
+      dropped_moderators <- colnames(df_training_complete)[which(levels_with_data < 2)]
       mandatory_predictors <- mandatory_predictors[mandatory_predictors %in% updated_moderators]
       optional_predictors <- optional_predictors[optional_predictors %in% updated_moderators]
-      model_text <- {create_model_text(
-        outcome_name = outcome_name, outcome_type = outcome_type,
-        outcome_time = outcome_time, outcome_count = outcome_count,
-        mandatory_predictors = mandatory_predictors,
-        optional_predictors = optional_predictors,
-        mandatory_interactions = mandatory_interactions,
-        optional_interactions = optional_interactions)}
-      regression_model <- suppressWarnings(try(eval(parse(text = model_text)), silent = TRUE))
-      if (TRUE %in% (class(regression_model) == "try-error")) {
-        output <- {list(
-          actual_training = actual_training,
-          predicted_training = NA,
-          predicted_training_calibration_adjusted = NA,
-          actual_only_validation = actual_only_validation,
-          predicted_only_validation = NA,
-          predicted_only_validation_calibration_adjusted = NA,
-          actual_all_subjects = actual_all_subjects,
-          predicted_all_subjects = NA,
-          predicted_all_subjects_calibration_adjusted = NA,
-          lp_training = NA,
-          lp_only_validation = NA,
-          lp_all_subjects = NA,
-          lp_training_calibration_adjusted = NA,
-          lp_only_validation_calibration_adjusted = NA,
-          lp_all_subjects_calibration_adjusted = NA,
-          time_training = NA,
-          time_only_validation = NA,
-          time_all_subjects = NA,
-          regression_model = NA,
-          html_file = html_file,
-          outcome = "There was an error in the model: try a simpler model."
-        )}
+      # Regression model ####
+      if ((! is.na(predetermined_model_text)) & (predetermined_model_text != "")) {
+        model_text <- predetermined_model_text
+        if(length(dropped_moderators) > 0) {model_text <- remove_dropped_predictors_from_models(model_text = model_text, dropped_moderators = dropped_moderators)}
       } else {
-        # Demonstrate the regression model (by getting to html_file) if this was apparent performance ####
-        if (bootstrap_sample == FALSE){
-          html_file$regression_model <- {paste0(
-            '<h3>Regression model</h3>', '\n',
-            r_object_to_html_code(r_object = regression_model)
+        model_text <- {create_model_text(
+          outcome_name = outcome_name, outcome_type = outcome_type,
+          outcome_time = outcome_time, outcome_count = outcome_count,
+          mandatory_predictors = mandatory_predictors,
+          optional_predictors = optional_predictors,
+          mandatory_interactions = mandatory_interactions,
+          optional_interactions = optional_interactions)}
+      }
+      regression_model <- suppressWarnings(try(eval(parse(text = model_text)), silent = TRUE))
+      failed_simpler_model <- FALSE
+      if (TRUE %in% (class(regression_model) == "try-error")) {
+        # Try a simpler model
+        model_text <- {create_model_text(
+          outcome_name = outcome_name, outcome_type = outcome_type,
+          outcome_time = outcome_time, outcome_count = outcome_count,
+          mandatory_predictors = mandatory_predictors,
+          optional_predictors = NULL,
+          mandatory_interactions = NULL,
+          optional_interactions = NULL)}
+        regression_model <- suppressWarnings(try(eval(parse(text = model_text)), silent = TRUE))
+        if (TRUE %in% (class(regression_model) == "try-error")) {
+          failed_simpler_model <- TRUE
+          output <- {list(
+            actual_training = actual_training,
+            predicted_training = NA,
+            predicted_training_calibration_adjusted = NA,
+            predicted_training_adjusted_mandatory_predictors_only = NA,
+            actual_only_validation = actual_only_validation,
+            predicted_only_validation = NA,
+            predicted_only_validation_calibration_adjusted = NA,
+            predicted_only_validation_adjusted_mandatory_predictors_only = NA,
+            actual_all_subjects = actual_all_subjects,
+            predicted_all_subjects = NA,
+            predicted_all_subjects_calibration_adjusted = NA,
+            predicted_all_subjects_adjusted_mandatory_predictors_only = NA,
+            lp_training = NA,
+            lp_only_validation = NA,
+            lp_all_subjects = NA,
+            lp_training_calibration_adjusted = NA,
+            lp_only_validation_calibration_adjusted = NA,
+            lp_all_subjects_calibration_adjusted = NA,
+            lp_training_adjusted_mandatory_predictors_only = NA,
+            lp_only_validation_adjusted_mandatory_predictors_only = NA,
+            lp_all_subjects_adjusted_mandatory_predictors_only = NA,
+            time_training = NA,
+            time_only_validation = NA,
+            time_all_subjects = NA,
+            regression_model = regression_model,
+            df_all_subjects = df_all_subjects,
+            html_file = html_file,
+            outcome = "There was an error in the model: try a simpler model."
           )}
         }
+      }
+      if (! TRUE %in% (class(regression_model) == "try-error")) {
         # Manual predictions ####
         variables_in_model <- setdiff(updated_moderators, c(outcome_name, if(outcome_type == "time-to-event"){outcome_time}))
         revised_names <- unlist(lapply(variables_in_model, function(x) {
@@ -611,15 +659,15 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           }
           return(output)
         }))
-        manual_lp_training <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
-                                                  new_data = df_training_complete_copy, regression_model = regression_model,
-                                                  variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete)
-        manual_lp_only_validation <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
-                                                         new_data = df_only_validation, regression_model = regression_model,
-                                                         variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete)
-        manual_lp_all_subjects <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
-                                                      new_data = df_all_subjects, regression_model = regression_model,
-                                                      variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete)
+        manual_lp_training <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                      new_data = df_training_complete_copy, regression_model = regression_model,
+                                                      variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete), silent = TRUE)
+        manual_lp_only_validation <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                             new_data = df_only_validation, regression_model = regression_model,
+                                                             variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete), silent = TRUE)
+        manual_lp_all_subjects <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                          new_data = df_all_subjects, regression_model = regression_model,
+                                                          variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete), silent = TRUE)
         # Linear predictors directly from the model ####
         {
           if (outcome_type != "time-to-event") {
@@ -631,6 +679,170 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
             lp_only_validation_with_se <- try(predict(regression_model, newdata = df_only_validation, type = "expected", se.fit = TRUE), silent = TRUE)
             lp_all_subjects_with_se <- try(predict(regression_model, newdata = df_all_subjects, type = "expected", se.fit = TRUE), silent = TRUE)
           }
+        }
+        # Error in linear prediction ####
+        if ((TRUE %in% (class(manual_lp_training) == "try-error")) & (TRUE %in% (class(lp_training_with_se) == "try-error"))) {
+          # Try a simpler model
+          model_text <- {create_model_text(
+            outcome_name = outcome_name, outcome_type = outcome_type,
+            outcome_time = outcome_time, outcome_count = outcome_count,
+            mandatory_predictors = mandatory_predictors,
+            optional_predictors = NULL,
+            mandatory_interactions = NULL,
+            optional_interactions = NULL)}
+          regression_model <- suppressWarnings(try(eval(parse(text = model_text)), silent = TRUE))
+          if (TRUE %in% (class(regression_model) == "try-error")) {
+            failed_simpler_model <- TRUE
+            output <- {list(
+              actual_training = actual_training,
+              predicted_training = NA,
+              predicted_training_calibration_adjusted = NA,
+              predicted_training_adjusted_mandatory_predictors_only = NA,
+              actual_only_validation = actual_only_validation,
+              predicted_only_validation = NA,
+              predicted_only_validation_calibration_adjusted = NA,
+              predicted_only_validation_adjusted_mandatory_predictors_only = NA,
+              actual_all_subjects = actual_all_subjects,
+              predicted_all_subjects = NA,
+              predicted_all_subjects_calibration_adjusted = NA,
+              predicted_all_subjects_adjusted_mandatory_predictors_only = NA,
+              lp_training = NA,
+              lp_only_validation = NA,
+              lp_all_subjects = NA,
+              lp_training_calibration_adjusted = NA,
+              lp_only_validation_calibration_adjusted = NA,
+              lp_all_subjects_calibration_adjusted = NA,
+              lp_training_adjusted_mandatory_predictors_only = NA,
+              lp_only_validation_adjusted_mandatory_predictors_only = NA,
+              lp_all_subjects_adjusted_mandatory_predictors_only = NA,
+              time_training = NA,
+              time_only_validation = NA,
+              time_all_subjects = NA,
+              regression_model = regression_model,
+              df_all_subjects = df_all_subjects,
+              html_file = html_file,
+              outcome = "There was an error in the model: try a simpler model."
+            )}
+          } else {
+            # Manual predictions ####
+            variables_in_model <- setdiff(updated_moderators, c(outcome_name, if(outcome_type == "time-to-event"){outcome_time}))
+            revised_names <- unlist(lapply(variables_in_model, function(x) {
+              if (x == make.names(x)) {
+                x
+              } else {
+                paste0("`", x, "`")
+              }
+            }))
+            variables_in_model_summary <- do.call(rbind.data.frame, lapply(1:length(variables_in_model), function(x) {
+              type <- class(df_training_complete_copy[,variables_in_model[x]])
+              if (("numeric" %in% type) | ("integer" %in% type)) {
+                output <- cbind.data.frame(
+                  name = variables_in_model[x],
+                  revised_name = revised_names[x],
+                  type = "numeric",
+                  levels = NA,
+                  names_in_coefficient_table = revised_names[x]
+                )
+              } else if ("ordered" %in% type) {
+                categories <- levels(df_training_complete_copy[,variables_in_model[x]])
+                output <- cbind.data.frame(
+                  name = variables_in_model[x],
+                  revised_name = revised_names[x],
+                  type = "ordinal",
+                  levels = categories,
+                  names_in_coefficient_table = c(NA, {paste0(
+                    revised_names[x],
+                    paste0(
+                      c(
+                        ".L",
+                        if (length(categories) > 2) {".Q"},
+                        if (length(categories) > 3) {".C"},
+                        if (length(categories) > 4) {paste0("^", 4:(length(categories)-1))}
+                      )
+                    )
+                  )})
+                )
+              } else {
+                categories <- levels(df_training_complete_copy[,variables_in_model[x]])
+                output <- cbind.data.frame(
+                  name = variables_in_model[x],
+                  revised_name = revised_names[x],
+                  type = "nominal",
+                  levels = categories,
+                  names_in_coefficient_table = {paste0(
+                    revised_names[x],
+                    categories
+                  )}
+                )
+              }
+              return(output)
+            }))
+            manual_lp_training <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                          new_data = df_training_complete_copy, regression_model = regression_model,
+                                                          variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete), silent = TRUE)
+            manual_lp_only_validation <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                                 new_data = df_only_validation, regression_model = regression_model,
+                                                                 variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete), silent = TRUE)
+            manual_lp_all_subjects <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                              new_data = df_all_subjects, regression_model = regression_model,
+                                                              variables_in_model_summary = variables_in_model_summary, df_training_complete = df_training_complete), silent = TRUE)
+            # Linear predictors directly from the model ####
+            {
+              if (outcome_type != "time-to-event") {
+                lp_training_with_se <- try(predict(regression_model, newdata = df_training_complete_copy, type = "response", se.fit = TRUE), silent = TRUE)
+                lp_only_validation_with_se <- try(predict(regression_model, newdata = df_only_validation, type = "response", se.fit = TRUE), silent = TRUE)
+                lp_all_subjects_with_se <- try(predict(regression_model, newdata = df_all_subjects, type = "response", se.fit = TRUE), silent = TRUE)
+              } else {
+                lp_training_with_se <- try(predict(regression_model, newdata = df_training_complete_copy, type = "expected", se.fit = TRUE), silent = TRUE)
+                lp_only_validation_with_se <- try(predict(regression_model, newdata = df_only_validation, type = "expected", se.fit = TRUE), silent = TRUE)
+                lp_all_subjects_with_se <- try(predict(regression_model, newdata = df_all_subjects, type = "expected", se.fit = TRUE), silent = TRUE)
+              }
+            }
+
+            # Error in linear prediction ####
+            if ((TRUE %in% (class(manual_lp_training) == "try-error")) & (TRUE %in% (class(lp_training_with_se) == "try-error"))) {
+              failed_simpler_model <- TRUE
+              output <- {list(
+                actual_training = actual_training,
+                predicted_training = NA,
+                predicted_training_calibration_adjusted = NA,
+                predicted_training_adjusted_mandatory_predictors_only = NA,
+                actual_only_validation = actual_only_validation,
+                predicted_only_validation = NA,
+                predicted_only_validation_calibration_adjusted = NA,
+                predicted_only_validation_adjusted_mandatory_predictors_only = NA,
+                actual_all_subjects = actual_all_subjects,
+                predicted_all_subjects = NA,
+                predicted_all_subjects_calibration_adjusted = NA,
+                predicted_all_subjects_adjusted_mandatory_predictors_only = NA,
+                lp_training = NA,
+                lp_only_validation = NA,
+                lp_all_subjects = NA,
+                lp_training_calibration_adjusted = NA,
+                lp_only_validation_calibration_adjusted = NA,
+                lp_all_subjects_calibration_adjusted = NA,
+                lp_training_adjusted_mandatory_predictors_only = NA,
+                lp_only_validation_adjusted_mandatory_predictors_only = NA,
+                lp_all_subjects_adjusted_mandatory_predictors_only = NA,
+                time_training = NA,
+                time_only_validation = NA,
+                time_all_subjects = NA,
+                regression_model = regression_model,
+                df_all_subjects = df_all_subjects,
+                html_file = html_file,
+                outcome = "There was an error in linear prediction using the model: try a simpler model."
+              )}
+            }
+          }
+        }
+      }
+      if (failed_simpler_model == FALSE) {
+        # Demonstrate the regression model (by getting to html_file) if this was apparent performance ####
+        if (bootstrap_sample == FALSE){
+          html_file$regression_model <- {paste0(
+            '<h3>Regression model</h3>', '\n',
+            r_object_to_html_code(r_object = regression_model)
+          )}
         }
         # Further processing ####
         if (TRUE %in% c(class(lp_training_with_se) == "try-error", class(lp_all_subjects_with_se) == "try-error", class(lp_all_subjects_with_se) == "try-error")) {
@@ -716,6 +928,22 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           lp_only_validation_calibration_adjusted = manual_lp_only_validation_calibration_adjusted$lp_new_data
           lp_all_subjects_calibration_adjusted = manual_lp_all_subjects_calibration_adjusted$lp_new_data
         }
+        # Adjusted lp (include coefficient of mandatory predictors only) ####
+        if (length(mandatory_predictors) > 0) {
+          lp_training_adjusted_mandatory_predictors_only <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                                                new_data = df_training_complete_copy, regression_model = regression_model,
+                                                                                variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete)$lp_new_data
+          lp_only_validation_adjusted_mandatory_predictors_only <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                                                       new_data = df_only_validation, regression_model = regression_model,
+                                                                                       variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete)$lp_new_data
+          lp_all_subjects_adjusted_mandatory_predictors_only <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                                                    new_data = df_all_subjects, regression_model = regression_model,
+                                                                                    variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete)$lp_new_data
+        } else {
+          lp_training_adjusted_mandatory_predictors_only <- NA
+          lp_only_validation_adjusted_mandatory_predictors_only <- NA
+          lp_all_subjects_adjusted_mandatory_predictors_only <- NA
+        }
         # Predictions ####
         # If the outcome type is quantitative, the lp gives the predictions
         if (outcome_type == "quantitative") {
@@ -725,6 +953,9 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           predicted_training_calibration_adjusted <- lp_training_calibration_adjusted
           predicted_only_validation_calibration_adjusted <- lp_only_validation_calibration_adjusted
           predicted_all_subjects_calibration_adjusted <- lp_all_subjects_calibration_adjusted
+          predicted_training_adjusted_mandatory_predictors_only <- lp_training_adjusted_mandatory_predictors_only
+          predicted_only_validation_adjusted_mandatory_predictors_only <- lp_only_validation_adjusted_mandatory_predictors_only
+          predicted_all_subjects_adjusted_mandatory_predictors_only <- lp_all_subjects_adjusted_mandatory_predictors_only
         } else {
           predicted_training <- NA
           predicted_only_validation <- NA
@@ -732,6 +963,9 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           predicted_training_calibration_adjusted <- NA
           predicted_only_validation_calibration_adjusted <- NA
           predicted_all_subjects_calibration_adjusted <- NA
+          predicted_training_adjusted_mandatory_predictors_only <- NA
+          predicted_only_validation_adjusted_mandatory_predictors_only <- NA
+          predicted_all_subjects_adjusted_mandatory_predictors_only <- NA
           # First standard lp ####
           {
             optimal_threshold <- calculate_pROC_threshold(lp_training, actual_training)
@@ -826,28 +1060,81 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
               predicted_all_subjects_calibration_adjusted <- factor(predicted_all_subjects_calibration_adjusted, levels = levels(actual_all_subjects))
             }
           }
+          # Next adjusted mandatory predictors only lp ####
+          {
+            optimal_threshold_adjusted_mandatory_predictors_only <- calculate_pROC_threshold(lp_training_adjusted_mandatory_predictors_only, actual_training)
+            # If the pROC threshold fails or if the heuristic threshold is the preferred method, try the heuristic threshold based on prevalence
+            if (is.na(optimal_threshold_adjusted_mandatory_predictors_only$direction) |
+                ((is.na(optimal_threshold_adjusted_mandatory_predictors_only$threshold_youden)) & (is.na(optimal_threshold_adjusted_mandatory_predictors_only$threshold_topleft))) |
+                (model_threshold_method == "heuristic")) {
+              optimal_threshold_adjusted_mandatory_predictors_only <- calculate_heuristic_threshold(lp_training_adjusted_mandatory_predictors_only, actual_training)
+            }
+            # If there is no direction for the threshold calculations, no classification is possible
+            if (is.na(optimal_threshold_adjusted_mandatory_predictors_only$direction)) {
+              predicted_training_adjusted_mandatory_predictors_only = NA
+              predicted_only_validation_adjusted_mandatory_predictors_only = NA
+              predicted_all_subjects_adjusted_mandatory_predictors_only = NA
+            } else {
+              # If the youden or topleft methods could not be calculated or if the heuristic method is the preferred method, then the threshold is the heuristic threshold
+              threshold_adjusted_mandatory_predictors_only <- if (is.null(optimal_threshold_adjusted_mandatory_predictors_only$threshold_youden)) {
+                optimal_threshold_adjusted_mandatory_predictors_only$threshold
+              } else {
+                # If youden is the preferred method, use the youden threshold, but if this is absent, use the topleft threshold
+                # On the other hand, if topleft is the preferred method, use the topleft threshold, but if this is absent, use the youden threshold
+                if (model_threshold_method == "youden") {
+                  ifelse(is.na(optimal_threshold_adjusted_mandatory_predictors_only$threshold_youden), optimal_threshold_adjusted_mandatory_predictors_only$threshold_topleft, optimal_threshold_adjusted_mandatory_predictors_only$threshold_youden)
+                } else {
+                  ifelse(is.na(optimal_threshold_adjusted_mandatory_predictors_only$threshold_topleft), optimal_threshold_adjusted_mandatory_predictors_only$threshold_youden, optimal_threshold_adjusted_mandatory_predictors_only$threshold_topleft)
+                }
+              }
+              if (optimal_threshold_adjusted_mandatory_predictors_only$direction == "<") {
+                predicted_training_adjusted_mandatory_predictors_only[lp_training_adjusted_mandatory_predictors_only <= threshold_adjusted_mandatory_predictors_only] <- levels(actual_training)[1]
+                predicted_training_adjusted_mandatory_predictors_only[lp_training_adjusted_mandatory_predictors_only > threshold_adjusted_mandatory_predictors_only] <- levels(actual_training)[2]
+                predicted_only_validation_adjusted_mandatory_predictors_only[lp_only_validation_adjusted_mandatory_predictors_only <= threshold_adjusted_mandatory_predictors_only] <- levels(actual_only_validation)[1]
+                predicted_only_validation_adjusted_mandatory_predictors_only[lp_only_validation_adjusted_mandatory_predictors_only > threshold_adjusted_mandatory_predictors_only] <- levels(actual_only_validation)[2]
+                predicted_all_subjects_adjusted_mandatory_predictors_only[lp_all_subjects_adjusted_mandatory_predictors_only <= threshold_adjusted_mandatory_predictors_only] <- levels(actual_all_subjects)[1]
+                predicted_all_subjects_adjusted_mandatory_predictors_only[lp_all_subjects_adjusted_mandatory_predictors_only > threshold_adjusted_mandatory_predictors_only] <- levels(actual_all_subjects)[2]
+              } else {
+                predicted_training_adjusted_mandatory_predictors_only[lp_training_adjusted_mandatory_predictors_only <= threshold_adjusted_mandatory_predictors_only] <- levels(actual_training)[2]
+                predicted_training_adjusted_mandatory_predictors_only[lp_training_adjusted_mandatory_predictors_only > threshold_adjusted_mandatory_predictors_only] <- levels(actual_training)[1]
+                predicted_only_validation_adjusted_mandatory_predictors_only[lp_only_validation_adjusted_mandatory_predictors_only <= threshold_adjusted_mandatory_predictors_only] <- levels(actual_only_validation)[2]
+                predicted_only_validation_adjusted_mandatory_predictors_only[lp_only_validation_adjusted_mandatory_predictors_only > threshold_adjusted_mandatory_predictors_only] <- levels(actual_only_validation)[1]
+                predicted_all_subjects_adjusted_mandatory_predictors_only[lp_all_subjects_adjusted_mandatory_predictors_only <= threshold_adjusted_mandatory_predictors_only] <- levels(actual_all_subjects)[2]
+                predicted_all_subjects_adjusted_mandatory_predictors_only[lp_all_subjects_adjusted_mandatory_predictors_only > threshold_adjusted_mandatory_predictors_only] <- levels(actual_all_subjects)[1]
+              }
+              predicted_training_adjusted_mandatory_predictors_only <- factor(predicted_training_adjusted_mandatory_predictors_only, levels = levels(actual_training))
+              predicted_only_validation_adjusted_mandatory_predictors_only <- factor(predicted_only_validation_adjusted_mandatory_predictors_only, levels = levels(actual_only_validation))
+              predicted_all_subjects_adjusted_mandatory_predictors_only <- factor(predicted_all_subjects_adjusted_mandatory_predictors_only, levels = levels(actual_all_subjects))
+            }
+          }
         }
         output <- {list(
           actual_training = actual_training,
           predicted_training = predicted_training,
           predicted_training_calibration_adjusted = predicted_training_calibration_adjusted,
+          predicted_training_adjusted_mandatory_predictors_only = predicted_training_adjusted_mandatory_predictors_only,
           actual_only_validation = actual_only_validation,
           predicted_only_validation = predicted_only_validation,
           predicted_only_validation_calibration_adjusted = predicted_only_validation_calibration_adjusted,
+          predicted_only_validation_adjusted_mandatory_predictors_only = predicted_only_validation_adjusted_mandatory_predictors_only,
           actual_all_subjects = actual_all_subjects,
           predicted_all_subjects = predicted_all_subjects,
           predicted_all_subjects_calibration_adjusted = predicted_all_subjects_calibration_adjusted,
+          predicted_all_subjects_adjusted_mandatory_predictors_only = predicted_all_subjects_adjusted_mandatory_predictors_only,
           lp_training = lp_training,
           lp_only_validation = lp_only_validation,
           lp_all_subjects = lp_all_subjects,
           lp_training_calibration_adjusted = lp_training_calibration_adjusted,
           lp_only_validation_calibration_adjusted = lp_only_validation_calibration_adjusted,
           lp_all_subjects_calibration_adjusted = lp_all_subjects_calibration_adjusted,
-          regression_model = regression_model,
-          df_all_subjects = df_all_subjects,
+          lp_training_adjusted_mandatory_predictors_only = lp_training_adjusted_mandatory_predictors_only,
+          lp_only_validation_adjusted_mandatory_predictors_only = lp_only_validation_adjusted_mandatory_predictors_only,
+          lp_all_subjects_adjusted_mandatory_predictors_only = lp_all_subjects_adjusted_mandatory_predictors_only,
           time_training = if (outcome_type == "time-to-event") {df_training_complete_copy[,outcome_time]} else {NA},
           time_only_validation = if (outcome_type == "time-to-event") {df_only_validation[,outcome_time]} else {NA},
           time_all_subjects = if (outcome_type == "time-to-event") {df_all_subjects[,outcome_time]} else {NA},
+          regression_model = regression_model,
+          df_all_subjects = df_all_subjects,
           html_file = html_file,
           outcome = "Successful"
         )}

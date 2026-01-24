@@ -47,9 +47,8 @@ Kurinchi Gurusamy
 \code{\link{process_data}}
 }
 \examples{
-\dontrun{
 data_file_path <- paste0(tempdir(), "/df.csv")
 write.csv(penguins, data_file_path, row.names = FALSE, na = "")
 guessed_data_types <- guess_data_types(data_file_path = data_file_path)
-}
+guessed_data_types
 }

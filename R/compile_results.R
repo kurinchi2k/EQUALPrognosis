@@ -1,4 +1,4 @@
-compile_results <- function(generic_input_parameters, specific_input_parameters, prepared_datasets) {
+compile_results <- function(generic_input_parameters, specific_input_parameters, prepared_datasets, verbose = TRUE) {
   # Functions ####
   figure_to_html_code <- function(caption, figure_path, alt = "see text", width_percent = 100) {
     mime_type <- mime::guess_type(figure_path)
@@ -98,7 +98,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
     placeholder <- eval(parse(text = plot_text))
     if (convert_to_html_code == TRUE) {
       temp_file <- tempfile(fileext = ".png")
-      suppressMessages(suppressWarnings(ggsave(temp_file, width = 7, height = nrow(est_ci_table))))
+      suppressMessages(suppressWarnings(ggsave(temp_file, width = 7, height = nrow(est_ci_table) + 1)))
       output <- figure_to_html_code(caption = ifelse(is.na(parameter_name), "Parameter", parameter_name), figure_path = temp_file, alt = ifelse(is.na(parameter_name), "Parameter", parameter_name), width_percent = 100)
       unlink(temp_file)
     } else {
@@ -139,6 +139,20 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
     }
     return(back_transformed_lp)
   }
+  performance_parameters <- {cbind.data.frame(
+    parameters = c("accuracy", "c_statistic", "OE_ratio", "calibration_intercept", "calibration_slope", "error",
+                   "m_OE_ratio", "m_calibration_intercept", "m_calibration_slope"),
+    transformation = c("logit", "logit", "log", NA, NA, NA,
+                       "log", NA, NA)
+  )}
+  if(generic_input_parameters$outcome_type == "quantitative") {
+    relevant_parameters <- performance_parameters[performance_parameters$parameters %in% c("calibration_intercept", "calibration_slope", "error", "m_calibration_intercept", "m_calibration_slope"),]
+  } else if (generic_input_parameters$outcome_type == "binary") {
+    relevant_parameters <- performance_parameters[performance_parameters$parameters %in% c("accuracy", "c_statistic", "OE_ratio", "calibration_intercept", "calibration_slope", "m_OE_ratio", "m_calibration_intercept", "m_calibration_slope"),]
+  } else if (generic_input_parameters$outcome_type == "time-to-event") {
+    relevant_parameters <- performance_parameters[performance_parameters$parameters %in% c("accuracy", "c_statistic", "OE_ratio", "calibration_slope", "m_OE_ratio", "m_calibration_slope"),]
+  }
+  relevant_parameters <- relevant_parameters$parameters
   # Dummy variables to avoid CRAN errors. These variables are related to the names of variables in box plot.
   group <- NA
   optimism <- NA
@@ -200,15 +214,15 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
   names(html_specific_input_parameters) <- names(specific_input_parameters)
   # Each analysis ####
   results <- lapply(1:length(specific_input_parameters), function(x) {
-    cat(paste0("\n", names(specific_input_parameters)[x], "...", "\n"))
+    if(verbose == TRUE) {cat(paste0("\n\n", names(specific_input_parameters)[x], "...", "\n"))}
     output <- try(perform_analysis(
       generic_input_parameters = generic_input_parameters,
       specific_input_parameters_each_analysis = specific_input_parameters[[x]],
-      prepared_datasets = prepared_datasets), silent = TRUE)
+      prepared_datasets = prepared_datasets, verbose = verbose), silent = TRUE)
   })
   names(results) <- names(specific_input_parameters)
   # Develop html code for each analysis and calibration plots ####
-  cat("\nSummarising results...")
+  if(verbose == TRUE) {cat("\nSummarising results...")}
   html_each_analysis <- unlist(lapply(1:length(specific_input_parameters), function(x) {
     if (TRUE %in% (class(results[[x]]) == "try-error")) {
       apparent_performance <- c(
@@ -238,7 +252,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
-                )
+              )
               calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
@@ -273,7 +287,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
-                )
+              )
               calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
@@ -336,10 +350,10 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
               # If even this caused an error indicate so
               if (TRUE %in% (class(calib_plot) == "try-error")) {
-              apparent_performance <- c(
-                '<h2>Apparent performance</h2>',
-                'Apparent performance cannot be calculated because of an error in estimating the calibration plot.'
-              )
+                apparent_performance <- c(
+                  '<h2>Apparent performance</h2>',
+                  'Apparent performance cannot be calculated because of an error in estimating the calibration plot.'
+                )
               } else {
                 # Indicate that the calibration plot based on rate could not be calculated and with a warning that the plot was based ignoring the follow-up time
                 temp_file <- tempfile(fileext = ".png")
@@ -395,7 +409,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
-                )
+              )
               calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
@@ -430,7 +444,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
-                )
+              )
               calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
@@ -500,7 +514,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               suppressMessages(suppressWarnings(ggsave(temp_file)))
               test_performance <- c(
                 '<h2>Performance in simulations</h2>',
-                  'Performance in simulations could not be calculated based on rate. Therefore, follow-up time was removed. Therefore, the calibration plot is likely to be unreliable.<br>',
+                'Performance in simulations could not be calculated based on rate. Therefore, follow-up time was removed. Therefore, the calibration plot is likely to be unreliable.<br>',
                 figure_to_html_code(caption = "Performance in simulations", figure_path = temp_file, alt = paste0("Calibration plot"), width_percent = 100)
               )
               unlink(temp_file)
@@ -532,7 +546,6 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
       html_calibration_plot
     )}
   }))
-  relevant_parameters <- names(results[[1]]$optimism_corrected_performance)
   # Optimism across analyses
   html_optimism_all_analyses <- {c(
     "<h1>Optimism variability plots</h1>",
@@ -558,11 +571,12 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             y = "Optimism") +
           theme_minimal() + theme(legend.position="none")
         temp_file <- tempfile(fileext = ".png")
-        suppressWarnings(ggsave(temp_file, width = 6, height = length(unique(box_plot_data$group))/2, units = "in"))
+        suppressWarnings(ggsave(temp_file, width = 6, height = length(unique(box_plot_data$group))/2 + 1, units = "in"))
         output <- figure_to_html_code(caption = relevant_parameters[x], figure_path = temp_file, alt = paste0("Optimism variability plot"), width_percent = 100)
         unlink(temp_file)
       } else {
-        output <- "None of the groups had optimism data for this parameter"
+        output <- paste0('<br>','<b>', relevant_parameters[x], '</b>', '<br>',
+                         "None of the groups had optimism data for this parameter")
       }
       return(output)
     }))
@@ -602,6 +616,15 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
       }
     }
   }))
+  performance_parameters_across_analyses_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(specific_input_parameters), function(x) {
+    if (! is.na(specific_input_parameters[[x]]$mandatory_predictors)) {
+      if (!TRUE %in% (class(results[[x]]) == "try-error")) {
+        if (specific_input_parameters[[x]]$develop_model == TRUE) {
+          cbind.data.frame(analysis = names(specific_input_parameters)[x], lapply(results[[x]]$optimism_corrected_performance_adjusted_mandatory_predictors_only, function(z) {round(z,4)}))
+        }
+      }
+    }
+  }))
   performance_parameters_across_analyses_out_of_sample <- do.call(rbind.data.frame, lapply(1:length(specific_input_parameters), function(x) {
     if (!TRUE %in% (class(results[[x]]) == "try-error")) {
       cbind.data.frame(analysis = names(specific_input_parameters)[x], lapply(results[[x]]$out_of_sample_performance_summary, function(z) {round(z$est,4)}))
@@ -632,6 +655,19 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             }))
   })
   names(performance_est_ci_calibration_adjusted) <- relevant_parameters
+  performance_est_ci_adjusted_mandatory_predictors_only <- lapply(1:length(relevant_parameters), function(x) {
+    do.call(rbind.data.frame,
+            lapply(1:length(specific_input_parameters), function(z) {
+              if ((!TRUE %in% (class(results[[z]]) == "try-error")) & (! is.na(specific_input_parameters[[z]]$mandatory_predictors))) {
+                if (specific_input_parameters[[z]]$develop_model == TRUE) {
+                  cbind.data.frame(
+                    analysis = names(specific_input_parameters)[z],
+                    round(results[[z]]$optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only[[relevant_parameters[x]]],4)
+                  )}
+              }
+            }))
+  })
+  names(performance_est_ci_adjusted_mandatory_predictors_only) <- relevant_parameters
   performance_est_ci_out_of_sample <- lapply(1:length(relevant_parameters), function(x) {
     do.call(rbind.data.frame,
             lapply(1:length(specific_input_parameters), function(z) {
@@ -674,6 +710,21 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
       )
     }
   }))
+  forest_plots_adjusted_mandatory_predictors_only <- unlist(lapply(relevant_parameters, function(x) {
+    performance_parameters_row <- match(x, performance_parameters$parameters)
+    est_ci_table <- performance_est_ci_adjusted_mandatory_predictors_only[[x]]
+    est_ci_table <- est_ci_table[! is.na(est_ci_table$est),]
+    if (nrow(est_ci_table) > 0) {
+      estimate_with_ci_forest(
+        est_ci_table = est_ci_table,
+        parameter_name = x,
+        minimum = performance_parameters$minimum[performance_parameters_row],
+        maximum = performance_parameters$maximum[performance_parameters_row],
+        reference_line = performance_parameters$reference_line[performance_parameters_row],
+        convert_to_html_code = TRUE
+      )
+    }
+  }))
   forest_plots_out_of_sample <- unlist(lapply(relevant_parameters, function(x) {
     performance_parameters_row <- match(x, performance_parameters$parameters)
     est_ci_table <- performance_est_ci_out_of_sample[[x]]
@@ -689,25 +740,53 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
       )
     }
   }))
-
   summary_results <- {list(
     performance_parameters_across_analyses = performance_parameters_across_analyses,
     performance_parameters_across_analyses_calibration_adjusted = performance_parameters_across_analyses_calibration_adjusted,
+    performance_parameters_across_analyses_adjusted_mandatory_predictors_only = performance_parameters_across_analyses_adjusted_mandatory_predictors_only,
     performance_parameters_across_analyses_out_of_sample = performance_parameters_across_analyses_out_of_sample,
     performance_est_ci = performance_est_ci,
     performance_est_ci_calibration_adjusted = performance_est_ci_calibration_adjusted,
+    performance_est_ci_adjusted_mandatory_predictors_only = performance_est_ci_adjusted_mandatory_predictors_only,
     performance_est_ci_out_of_sample = performance_est_ci_out_of_sample
   )}
   html_performance_parameters_across_all_analyses <- {c(
     '<h1>Performance</h1>',
-    table_to_html_code(caption = "Performance", df = performance_parameters_across_analyses, width_percent = 100),
-    forest_plots,
+    if (nrow(performance_parameters_across_analyses) > 0) {
+      paste0(
+        table_to_html_code(caption = "Performance", df = performance_parameters_across_analyses, width_percent = 100),
+        forest_plots
+      )
+    } else {
+      "No performance parameters are available to display."
+    },
     '<h1>Calibration-adjusted performance</h1>',
-    table_to_html_code(caption = "Performance of calibration-adjusted models", df = performance_parameters_across_analyses_calibration_adjusted, width_percent = 100),
-    forest_plots_calibration_adjusted,
+    if (nrow(performance_parameters_across_analyses_calibration_adjusted) > 0) {
+      paste0(
+        table_to_html_code(caption = "Performance of calibration-adjusted models", df = performance_parameters_across_analyses_calibration_adjusted, width_percent = 100),
+        forest_plots_calibration_adjusted
+      )
+    } else {
+      "No performance parameters are available to display."
+    },
+    '<h1>Mandatory predictors only models performance</h1>',
+    if (nrow(performance_parameters_across_analyses_adjusted_mandatory_predictors_only) > 0) {
+      paste0(
+        table_to_html_code(caption = "Performance of adjusted mandatory predictors only models", df = performance_parameters_across_analyses_adjusted_mandatory_predictors_only, width_percent = 100),
+        forest_plots_adjusted_mandatory_predictors_only
+      )
+    } else {
+      "No performance parameters are available to display."
+    },
     '<h1>Out-of-sample performance</h1>',
-    table_to_html_code(caption = "Performance in out of sample subjects", df = performance_parameters_across_analyses_out_of_sample, width_percent = 100),
-    forest_plots_out_of_sample
+    if (nrow(performance_parameters_across_analyses_out_of_sample) > 0) {
+      paste0(
+        table_to_html_code(caption = "Performance in out of sample subjects", df = performance_parameters_across_analyses_out_of_sample, width_percent = 100),
+        forest_plots_out_of_sample
+      )
+    } else {
+      "No performance parameters are available to display."
+    }
   )}
   # Write to html ####
   html_file_location <- paste0(gsub("\\\\", "/", tempdir()), "/results.html")

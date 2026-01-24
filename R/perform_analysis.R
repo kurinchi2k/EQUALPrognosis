@@ -1,4 +1,4 @@
-perform_analysis <- function(generic_input_parameters, specific_input_parameters_each_analysis, prepared_datasets) {
+perform_analysis <- function(generic_input_parameters, specific_input_parameters_each_analysis, prepared_datasets, verbose = TRUE) {
   # Functions ####
   bca <- function(theta){
     if (TRUE %in% (! is.na(theta))) {
@@ -31,12 +31,12 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
   calculate_modified_calibration_intercept <- function(calibration_intercept) {
     abs(calibration_intercept)
   }
-  performance_parameters <- cbind.data.frame(
+  performance_parameters <- {cbind.data.frame(
     parameters = c("accuracy", "c_statistic", "OE_ratio", "calibration_intercept", "calibration_slope", "error",
                    "m_OE_ratio", "m_calibration_intercept", "m_calibration_slope"),
     transformation = c("logit", "logit", "log", NA, NA, NA,
                        "log", NA, NA)
-  )
+  )}
   if(generic_input_parameters$outcome_type == "quantitative") {
     relevant_parameters <- performance_parameters[performance_parameters$parameters %in% c("calibration_intercept", "calibration_slope", "error", "m_calibration_intercept", "m_calibration_slope"),]
   } else if (generic_input_parameters$outcome_type == "binary") {
@@ -65,7 +65,7 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
     simulations_per_file = generic_input_parameters$simulations_per_file)}
   simulation_start_end <- placeholder$simulation_start_end
   temp_results_directory <- placeholder$temp_results_directory
-  # Calculate the actual and predicted
+  # Calculate the actual and predicted ####
   {
     actual_predicted_results_apparent <- {calculate_actual_predicted(
       prepared_datasets = prepared_datasets,
@@ -74,6 +74,7 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
       outcome_time = generic_input_parameters$outcome_time,
       outcome_count = generic_input_parameters$outcome_count,
       develop_model = specific_input_parameters_each_analysis$develop_model,
+      predetermined_model_text = specific_input_parameters_each_analysis$predetermined_model_text,
       mandatory_predictors = specific_input_parameters_each_analysis$mandatory_predictors,
       optional_predictors = specific_input_parameters_each_analysis$optional_predictors,
       mandatory_interactions = specific_input_parameters_each_analysis$mandatory_interactions,
@@ -82,9 +83,9 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
       scoring_system = specific_input_parameters_each_analysis$scoring_system,
       predetermined_threshold = specific_input_parameters_each_analysis$predetermined_threshold,
       higher_values_event = specific_input_parameters_each_analysis$higher_values_event,
-      each_simulation = 1, bootstrap_sample = FALSE
+      each_simulation = 1, bootstrap_sample = FALSE, verbose = verbose
     )}
-    cat("\nBootstrap performance...")
+    if (verbose == TRUE) {cat("\nBootstrap performance...")}
     for (i in 1:nrow(simulation_start_end)) {
       results_each_batch <- lapply(simulation_start_end$start_simulation[i]:simulation_start_end$end_simulation[i], function(each_simulation) {
         calculate_actual_predicted(
@@ -94,6 +95,7 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
           outcome_time = generic_input_parameters$outcome_time,
           outcome_count = generic_input_parameters$outcome_count,
           develop_model = specific_input_parameters_each_analysis$develop_model,
+          predetermined_model_text = specific_input_parameters_each_analysis$predetermined_model_text,
           mandatory_predictors = specific_input_parameters_each_analysis$mandatory_predictors,
           optional_predictors = specific_input_parameters_each_analysis$optional_predictors,
           mandatory_interactions = specific_input_parameters_each_analysis$mandatory_interactions,
@@ -102,12 +104,12 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
           scoring_system = specific_input_parameters_each_analysis$scoring_system,
           predetermined_threshold = specific_input_parameters_each_analysis$predetermined_threshold,
           higher_values_event = specific_input_parameters_each_analysis$higher_values_event,
-          each_simulation = each_simulation, bootstrap_sample = TRUE
+          each_simulation = each_simulation, bootstrap_sample = TRUE, verbose = verbose
         )
       })
       placeholder <- saveRDS(results_each_batch, paste0(temp_results_directory, "/batch_", i, ".rds"))
     }
-    cat("\nCompiling the results from saved files and calculating the performance...")
+    if (verbose == TRUE) {cat("\nCompiling the results from saved files and calculating the performance...")}
     actual_predicted_results_bootstrap <- do.call(c, lapply(1:nrow(simulation_start_end), function(x) {
       readRDS(paste0(temp_results_directory, "/batch_", x, ".rds"))
     }))
@@ -226,6 +228,64 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
     test_performance_calibration_adjusted <- NA
     out_of_sample_performance_calibration_adjusted <- NA
   }
+  # Calculate adjusted mandatory predictors only performance ####
+  if ((specific_input_parameters_each_analysis$develop_model == TRUE) & (! is.na(specific_input_parameters_each_analysis$mandatory_predictors))) {
+    apparent_performance_adjusted_mandatory_predictors_only <- {
+      cbind.data.frame(
+        performance = "apparent_adjusted_mandatory_predictors_only", simulation = NA, calculate_performance(
+          outcome_type = generic_input_parameters$outcome_type,
+          time = actual_predicted_results_apparent$time_all_subjects,
+          outcome_count = generic_input_parameters$outcome_count,
+          actual = actual_predicted_results_apparent$actual_all_subjects,
+          predicted = actual_predicted_results_apparent$predicted_all_subjects_adjusted_mandatory_predictors_only,
+          develop_model = specific_input_parameters_each_analysis$develop_model,
+          lp = actual_predicted_results_apparent$lp_all_subjects_adjusted_mandatory_predictors_only
+        ))}
+    test_performance_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
+      {cbind.data.frame(
+        performance = "test_adjusted_mandatory_predictors_only", simulation = x,
+        calculate_performance(
+          outcome_type = generic_input_parameters$outcome_type,
+          time = actual_predicted_results_bootstrap[[x]]$time_all_subjects,
+          outcome_count = generic_input_parameters$outcome_count,
+          actual = actual_predicted_results_bootstrap[[x]]$actual_all_subjects,
+          predicted = actual_predicted_results_bootstrap[[x]]$predicted_all_subjects_adjusted_mandatory_predictors_only,
+          develop_model = specific_input_parameters_each_analysis$develop_model,
+          lp = actual_predicted_results_bootstrap[[x]]$lp_all_subjects_adjusted_mandatory_predictors_only
+        ))}
+    }))
+    bootstrap_performance_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
+      {cbind.data.frame(
+        performance = "bootstrap_adjusted_mandatory_predictors_only", simulation = x,
+        calculate_performance(
+          outcome_type = generic_input_parameters$outcome_type,
+          time = actual_predicted_results_bootstrap[[x]]$time_training,
+          outcome_count = generic_input_parameters$outcome_count,
+          actual = actual_predicted_results_bootstrap[[x]]$actual_training,
+          predicted = actual_predicted_results_bootstrap[[x]]$predicted_training_adjusted_mandatory_predictors_only,
+          develop_model = specific_input_parameters_each_analysis$develop_model,
+          lp = actual_predicted_results_bootstrap[[x]]$lp_training_adjusted_mandatory_predictors_only
+        ))}
+    }))
+    out_of_sample_performance_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
+      {cbind.data.frame(
+        performance = "out_of_sample_adjusted_mandatory_predictors_only", simulation = x,
+        calculate_performance(
+          outcome_type = generic_input_parameters$outcome_type,
+          time = actual_predicted_results_bootstrap[[x]]$time_only_validation,
+          outcome_count = generic_input_parameters$outcome_count,
+          actual = actual_predicted_results_bootstrap[[x]]$actual_only_validation,
+          predicted = actual_predicted_results_bootstrap[[x]]$predicted_only_validation_adjusted_mandatory_predictors_only,
+          develop_model = specific_input_parameters_each_analysis$develop_model,
+          lp = actual_predicted_results_bootstrap[[x]]$lp_only_validation_adjusted_mandatory_predictors_only
+        ))}
+    }))
+  } else {
+    apparent_performance_adjusted_mandatory_predictors_only <- NA
+    bootstrap_performance_adjusted_mandatory_predictors_only <- NA
+    test_performance_adjusted_mandatory_predictors_only <- NA
+    out_of_sample_performance_adjusted_mandatory_predictors_only <- NA
+  }
   # Calculate optimism ####
   optimism <- cbind.data.frame(
     performance = "optimism",
@@ -315,7 +375,7 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
     return(performance_summary)
   })
   names(out_of_sample_performance_summary) <- relevant_parameters$parameters
-  # Calculate optimism-corrected calibration-adjusted performance ####
+  # Calculate optimism-corrected calibration-adjusted & mandatory predictors only performance ####
   if (specific_input_parameters_each_analysis$develop_model == TRUE) {
     # Calculate calibration-adjusted optimism ####
     optimism_calibration_adjusted <- cbind.data.frame(
@@ -406,12 +466,114 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
       return(performance_summary)
     })
     names(out_of_sample_performance_summary_calibration_adjusted) <- relevant_parameters$parameters
+    # Calculate adjusted_mandatory_predictors_only optimism ####
+    if (! is.na(specific_input_parameters_each_analysis$mandatory_predictors)) {
+      optimism_adjusted_mandatory_predictors_only <- cbind.data.frame(
+        performance = "optimism_adjusted_mandatory_predictors_only",
+        simulation = bootstrap_performance_adjusted_mandatory_predictors_only$simulation,
+        bootstrap_performance_adjusted_mandatory_predictors_only[,-match(c("performance", "simulation", "outcome", "message"), colnames(bootstrap_performance_adjusted_mandatory_predictors_only))] -
+          test_performance_adjusted_mandatory_predictors_only[,-match(c("performance", "simulation", "outcome", "message"), colnames(test_performance_adjusted_mandatory_predictors_only))]
+      )
+      # Calculate optimism-corrected adjusted_mandatory_predictors_only performance ####
+      # The average optimism is calculated by applying transformation to a linear scale, i.e., logit transformation for probabiities and log transformation for ratios and reversing the transformation.
+      average_optimism_adjusted_mandatory_predictors_only <- lapply(1:nrow(relevant_parameters), function(x) {
+        placeholder <- optimism_adjusted_mandatory_predictors_only[,relevant_parameters$parameters[x]]
+        placeholder <- placeholder[!is.na(placeholder)]
+        if (length(placeholder) > 0) {
+          if (! is.na(relevant_parameters$transformation[x])) {
+            if (relevant_parameters$transformation[x] == "logit") {
+              placeholder[placeholder <= 0] <- 0.000001
+              placeholder[placeholder >= 1] <- 1- 0.000001
+              placeholder <- qlogis(placeholder)
+              optimism_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+            } else if (relevant_parameters$transformation[x] == "log") {
+              placeholder[placeholder <= 0] <- 0.000001
+              placeholder <- log(placeholder)
+              optimism_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+            }
+          } else {
+            optimism_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+          }
+          colnames(optimism_summary) <- c("est", "lci", "uci")
+        } else {
+          optimism_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+        }
+        return(optimism_summary)
+      })
+      names(average_optimism_adjusted_mandatory_predictors_only) <- relevant_parameters$parameters
+      optimism_corrected_performance_adjusted_mandatory_predictors_only <- lapply(1:nrow(relevant_parameters), function(x) {
+        apparent_performance_adjusted_mandatory_predictors_only[1,relevant_parameters$parameters[x]] - average_optimism_adjusted_mandatory_predictors_only[[relevant_parameters$parameters[x]]]$est
+      })
+      names(optimism_corrected_performance_adjusted_mandatory_predictors_only) <- relevant_parameters$parameters
+      optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only <- lapply(1:nrow(relevant_parameters), function(x) {
+        placeholder <- apparent_performance_adjusted_mandatory_predictors_only[1,relevant_parameters$parameters[x]] - optimism_adjusted_mandatory_predictors_only[, relevant_parameters$parameters[x]]
+        placeholder <- placeholder[!is.na(placeholder)]
+        if (length(placeholder) > 0) {
+          if (! is.na(relevant_parameters$transformation[x])) {
+            if (relevant_parameters$transformation[x] == "logit") {
+              placeholder[placeholder <= 0] <- 0.000001
+              placeholder[placeholder >= 1] <- 1- 0.000001
+              placeholder <- qlogis(placeholder)
+              performance_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+            } else if (relevant_parameters$transformation[x] == "log") {
+              placeholder[placeholder <= 0] <- 0.000001
+              placeholder <- log(placeholder)
+              performance_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+            }
+          } else {
+            performance_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+          }
+          colnames(performance_summary) <- c("est", "lci", "uci")
+        } else {
+          performance_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+        }
+        return(performance_summary)
+      })
+      names(optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only) <- relevant_parameters$parameters
+      # Calculate out-of-sample adjusted_mandatory_predictors_only performance ####
+      out_of_sample_performance_summary_adjusted_mandatory_predictors_only <- lapply(1:nrow(relevant_parameters), function(x) {
+        placeholder <- out_of_sample_performance_adjusted_mandatory_predictors_only[, relevant_parameters$parameters[x]]
+        placeholder <- placeholder[!is.na(placeholder)]
+        if (length(placeholder) > 0) {
+          if (! is.na(relevant_parameters$transformation[x])) {
+            if (relevant_parameters$transformation[x] == "logit") {
+              placeholder[placeholder <= 0] <- 0.000001
+              placeholder[placeholder >= 1] <- 1- 0.000001
+              placeholder <- qlogis(placeholder)
+              performance_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+            } else if (relevant_parameters$transformation[x] == "log") {
+              placeholder[placeholder <= 0] <- 0.000001
+              placeholder <- log(placeholder)
+              performance_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+            }
+          } else {
+            performance_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+          }
+          colnames(performance_summary) <- c("est", "lci", "uci")
+        } else {
+          performance_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+        }
+        return(performance_summary)
+      })
+      names(out_of_sample_performance_summary_adjusted_mandatory_predictors_only) <- relevant_parameters$parameters
+    } else {
+      optimism_adjusted_mandatory_predictors_only <- NA
+      average_optimism_adjusted_mandatory_predictors_only <- NA
+      optimism_corrected_performance_adjusted_mandatory_predictors_only <- NA
+      optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only <- NA
+      out_of_sample_performance_summary_adjusted_mandatory_predictors_only <- NA
+    }
   } else {
     optimism_calibration_adjusted <- NA
     average_optimism_calibration_adjusted <- NA
     optimism_corrected_performance_calibration_adjusted <- NA
     optimism_corrected_performance_with_CI_calibration_adjusted <- NA
     out_of_sample_performance_summary_calibration_adjusted <- NA
+    optimism_adjusted_mandatory_predictors_only <- NA
+    average_optimism_adjusted_mandatory_predictors_only <- NA
+    optimism_corrected_performance_adjusted_mandatory_predictors_only <- NA
+    optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only <- NA
+    out_of_sample_performance_summary_adjusted_mandatory_predictors_only <- NA
   }
   # Output ####
   output <- list(
@@ -433,6 +595,15 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
     optimism_corrected_performance_calibration_adjusted = optimism_corrected_performance_calibration_adjusted,
     optimism_corrected_performance_with_CI_calibration_adjusted = optimism_corrected_performance_with_CI_calibration_adjusted,
     out_of_sample_performance_summary_calibration_adjusted = out_of_sample_performance_summary_calibration_adjusted,
+    apparent_performance_adjusted_mandatory_predictors_only = apparent_performance_adjusted_mandatory_predictors_only,
+    bootstrap_performance_adjusted_mandatory_predictors_only = bootstrap_performance_adjusted_mandatory_predictors_only,
+    test_performance_adjusted_mandatory_predictors_only = test_performance_adjusted_mandatory_predictors_only,
+    out_of_sample_performance_adjusted_mandatory_predictors_only = out_of_sample_performance_adjusted_mandatory_predictors_only,
+    optimism_adjusted_mandatory_predictors_only = optimism_adjusted_mandatory_predictors_only,
+    average_optimism_adjusted_mandatory_predictors_only = average_optimism_adjusted_mandatory_predictors_only,
+    optimism_corrected_performance_adjusted_mandatory_predictors_only = optimism_corrected_performance_adjusted_mandatory_predictors_only,
+    optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only = optimism_corrected_performance_with_CI_adjusted_mandatory_predictors_only,
+    out_of_sample_performance_summary_adjusted_mandatory_predictors_only = out_of_sample_performance_summary_adjusted_mandatory_predictors_only,
     actual_predicted_results_apparent = actual_predicted_results_apparent,
     average_lp_all_subjects = average_lp_all_subjects
   )

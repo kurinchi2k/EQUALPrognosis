@@ -1,5 +1,5 @@
-create_specific_input_parameters <- function(generic_input_parameters, analysis_details_path) {
-  cat("\nGeneric input parameters\n")
+create_specific_input_parameters <- function(generic_input_parameters, analysis_details_path, verbose = TRUE) {
+  if (verbose == TRUE) {cat("\nGeneric input parameters\n")}
   # Check validity of generic_input_parameters
   generic_input_parameters_names <- c('general_title', 'simulations', 'simulations_per_file', 'seed', 'df', 'outcome_name', 'outcome_type', 'outcome_time', 'outcome_count')
   if (TRUE %in% (is.na(match(generic_input_parameters_names, names(generic_input_parameters))))) {
@@ -9,14 +9,14 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
   } else if (is.null(
     create_generic_input_parameters(
       general_title = generic_input_parameters$general_title, simulations = generic_input_parameters$simulations, simulations_per_file = generic_input_parameters$simulations_per_file, seed = generic_input_parameters$seed,
-      df = generic_input_parameters$df, outcome_name = generic_input_parameters$outcome_name, outcome_type = generic_input_parameters$outcome_type, outcome_time = generic_input_parameters$outcome_time, outcome_count = generic_input_parameters$outcome_count))) {
+      df = generic_input_parameters$df, outcome_name = generic_input_parameters$outcome_name, outcome_type = generic_input_parameters$outcome_type, outcome_time = generic_input_parameters$outcome_time, outcome_count = generic_input_parameters$outcome_count, verbose = FALSE)$generic_input_parameters)) {
     outcome <- "Unsuccessful"
     message <- "The object provided for the input parameter 'generic_input_parameters' had errors. Please create the generic_input_parameters using the R documentation for that function."
     specific_input_parameters <- NULL
   } else {
-    default_column_names <- c('name', 'analysis_title', 'develop_model', 'mandatory_predictors', 'optional_predictors', 'mandatory_interactions', 'optional_interactions', 'model_threshold_method', 'scoring_system', 'predetermined_threshold', 'higher_values_event')
+    default_column_names <- c('name', 'analysis_title', 'develop_model', 'predetermined_model_text', 'mandatory_predictors', 'optional_predictors', 'mandatory_interactions', 'optional_interactions', 'model_threshold_method', 'scoring_system', 'predetermined_threshold', 'higher_values_event')
     analysis_details <- try(read.csv(analysis_details_path, header = TRUE, check.names = FALSE, na.strings = c("NA", "", " ", "  ")), silent = TRUE)
-    cat("\n\nSpecific input parameters\n")
+    if (verbose == TRUE) {cat("\n\nSpecific input parameters\n")}
     if (TRUE %in% (class(analysis_details) == "try-error")) {
       outcome <- "Unsuccessful"
       message <- "The outcome was unsuccessful. The analysis details file has no columns. Please upload a file with data."
@@ -28,7 +28,7 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
     } else if (TRUE %in% (is.na(match(default_column_names, colnames(analysis_details))))) {
       outcome <- "Unsuccessful"
       message <- paste0("The outcome was unsuccessful. The analysis details file does not have the mandatory columns. The mandatory columns are: ",
-                        paste0("'", colnames(analysis_details), "'", collapse = ", "), ". Please check whether you have missed or misspelt some column names.")
+                        paste0("'", default_column_names, "'", collapse = ", "), ". Please check whether you have missed or misspelt some column names.")
       specific_input_parameters <- NULL
     } else {
       checks <- data.frame(matrix(nrow = nrow(analysis_details), ncol = 3))
@@ -102,7 +102,7 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
       no_predictors <- (checks$fatal_errors == FALSE) & (processed_analysis_details$develop_model == TRUE) &
         (is.na(processed_analysis_details$mandatory_predictors)) & (is.na(processed_analysis_details$optional_predictors))
       checks$comments[no_predictors] <- paste0(checks$comments[no_predictors], "\n",
-                                               "When develop_model is TRUE, at least mandatory or optional predictor is required.")
+                                               "When develop_model is TRUE, at least one mandatory or optional predictor is required.")
       checks$fatal_errors[no_predictors] <- TRUE
       invalid_mandatory_predictors <- unlist(lapply(1:nrow(processed_analysis_details), function(x) {
         if ((checks$fatal_errors[x] == FALSE) & (processed_analysis_details$develop_model[x] == TRUE)) {
@@ -218,7 +218,7 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
         if (checks$fatal_errors[x] == TRUE) {
           output <- cbind.data.frame(mandatory_interactions = processed_analysis_details$mandatory_interactions[x],
                                      comments = NA)
-        } else if ((processed_analysis_details$develop_model[x] == FALSE) | is.na(processed_analysis_details$mandatory_interactions[x])) {
+        } else if ((processed_analysis_details$develop_model[x] == FALSE) | is.na(processed_analysis_details$mandatory_predictors[x]) | is.na(processed_analysis_details$mandatory_interactions[x])) {
           output <- cbind.data.frame(mandatory_interactions = processed_analysis_details$mandatory_interactions[x],
                                      comments = NA)
         } else {
@@ -254,9 +254,9 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
           output <- cbind.data.frame(optional_interactions = processed_analysis_details$optional_interactions[x],
                                      comments = NA)
         } else {
-          mandatory_predictors <- trimws(unlist(strsplit(processed_analysis_details$mandatory_predictors[x], ";")))
-          mandatory_interactions <- trimws(unlist(strsplit(processed_analysis_details$mandatory_interactions[x], ";")))
-          optional_predictors <- trimws(unlist(strsplit(processed_analysis_details$optional_predictors[x], ";")))
+          mandatory_predictors <- if (is.na(processed_analysis_details$mandatory_predictors[x])) {NA} else {trimws(unlist(strsplit(processed_analysis_details$mandatory_predictors[x], ";")))}
+          mandatory_interactions <- if (is.na(processed_analysis_details$mandatory_interactions[x])) {NA} else {trimws(unlist(strsplit(processed_analysis_details$mandatory_interactions[x], ";")))}
+          optional_predictors <- if(is.na(processed_analysis_details$optional_predictors[x])) {NA} else {trimws(unlist(strsplit(processed_analysis_details$optional_predictors[x], ";")))}
           optional_interactions <- trimws(unlist(strsplit(processed_analysis_details$optional_interactions[x], ";")))
           # Mandatory interactions cannot also be in optional interactions
           if (!TRUE %in% is.na(mandatory_interactions)) {
@@ -309,6 +309,7 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
           valid_rows[valid_rows$develop_model == FALSE, c('predetermined_threshold', 'higher_values_event')] <- NA
         }
         valid_rows[valid_rows$develop_model == TRUE, c('scoring_system', 'predetermined_threshold', 'higher_values_event')] <- NA
+        valid_rows$predetermined_model_text[valid_rows$predetermined_model_text == ""] <- NA
         valid_rows$mandatory_predictors[valid_rows$mandatory_predictors == ""] <- NA
         valid_rows$optional_predictors[valid_rows$optional_predictors == ""] <- NA
         valid_rows$mandatory_interactions[valid_rows$mandatory_interactions == ""] <- NA
@@ -317,6 +318,7 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
           list(
             analysis_title = valid_rows$analysis_title[x],
             develop_model = valid_rows$develop_model[x],
+            predetermined_model_text = valid_rows$predetermined_model_text[x],
             mandatory_predictors = valid_rows$mandatory_predictors[x],
             optional_predictors = valid_rows$optional_predictors[x],
             mandatory_interactions = valid_rows$mandatory_interactions[x],
@@ -355,6 +357,7 @@ create_specific_input_parameters <- function(generic_input_parameters, analysis_
     }
   }
   # Output ####
-  cat(message)
-  return(specific_input_parameters)
+  if (verbose == TRUE) {cat(message)}
+  output <- list(outcome = message, specific_input_parameters = specific_input_parameters)
+  return(output)
 }

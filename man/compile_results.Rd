@@ -12,7 +12,7 @@ below.
 }
 \usage{
 compile_results(generic_input_parameters, specific_input_parameters,
-prepared_datasets)
+prepared_datasets, verbose)
 }
 \arguments{
 \item{generic_input_parameters}{This is a list that contains common information
@@ -24,6 +24,7 @@ to each model or scoring system. If one or more items are missing or incorrect,
 this may result in error. Therefore, we recommend that you use the
 \code{\link{create_specific_input_parameters}}.}
 \item{prepared_datasets}{Datasets prepared using the \code{\link{prepare_datasets}}.}
+\item{verbose}{\emph{TRUE} if the progress must be displayed and \emph{FALSE} otherwise.}
 }
 \details{
 \strong{Overview}
@@ -112,85 +113,65 @@ Kurinchi Gurusamy
 \code{\link[CalibrationCurves]{CalibrationCurves}}
 }
 \examples{
-\dontrun{
-# Load packages ####
-library(base64enc)
-library(mime)
-library(pROC)
-library(survival)
-library(ggplot2)
-library(CalibrationCurves)
-library(predtools)
-library(EQUALPrognosis)
-# Prepare the data ####
-{
-  data_file_path <- paste0(tempdir(), "/df.csv")
-  write.csv(colon[colon$etype == 2, ], data_file_path, row.names = FALSE, na = "")
-  metadata <- {data.frame(
-    variable = c("id","study","rx","sex","age",
-                 "obstruct","perfor","adhere","nodes","status",
-                 "differ","extent","surg","node4","time",
-                 "etype"),
-    data_type = c("nominal", "nominal", "nominal", "binary", "numerical",
-                  "binary", "binary", "binary", "count", "binary",
-                  "ordinal", "ordinal", "binary", "binary", "numerical",
-                  "nominal"),
-    reference = c(NA, NA, "Obs", 0, NA,
-                  0, 0, 0, NA, 0,
-                  NA, NA, 0, 0, NA,
-                  NA),
-    ordinal_levels = c(NA, NA, NA, NA, NA,
-                       NA, NA, NA, NA, NA,
-                       "1;2;3", "1;2;3;4", NA, NA, NA,
-                       NA),
-    comments = NA
-  )}
-  metadata_file_path <- paste0(tempdir(), "/metadata.csv")
-  write.csv(metadata, metadata_file_path, row.names = FALSE, na = "")
-  processed_data <- process_data(data_file_path, metadata_file_path)
+  # Load packages ####
+  library(base64enc)
+  library(mime)
+  library(pROC)
+  library(survival)
+  library(ggplot2)
+  library(CalibrationCurves)
+  library(predtools)
+  colon$status <- factor(as.character(colon$status))
+  # For testing, only 5 simulations are used here. Usually at least 300 to 500
+  # simulations are a minimum. Increasing the simulations leads to more reliable results.
+  # The default value of 2000 simulations should provide reasonably reliable results.
+  generic_input_parameters <- create_generic_input_parameters(
+    general_title = "Prediction of colon cancer death", simulations = 5,
+    simulations_per_file = 20, seed = 1, df = colon, outcome_name = "status",
+    outcome_type = "time-to-event", outcome_time = "time", outcome_count = FALSE,
+    verbose = FALSE)$generic_input_parameters
+  analysis_details <- cbind.data.frame(
+    name = c('age', 'single_mandatory_predictor', 'complex_models',
+             'complex_models_only_optional_predictors', 'predetermined_model_text'),
+    analysis_title = c('Simple cut-off based on age', 'Single mandatory predictor (rx)',
+                       'Multiple mandatory and optional predictors',
+                       'Multiple optional predictors only', 'Predetermined model text'),
+    develop_model = c(FALSE, TRUE, TRUE, TRUE, TRUE),
+    predetermined_model_text = c(NA, NA, NA, NA,
+      "cph(Surv(time, status) ~ rx * age, data = df_training_complete, x = TRUE, y = TRUE)"),
+    mandatory_predictors = c(NA, 'rx', 'rx; differ; perfor; adhere; extent', NA, "rx; age"),
+    optional_predictors = c(NA, NA, 'sex; age; nodes', 'rx; differ; perfor', NA),
+    mandatory_interactions = c(NA, NA, 'rx; differ; extent', NA, NA),
+    optional_interactions = c(NA, NA, 'perfor; adhere; sex; age; nodes', 'rx; differ', NA),
+    model_threshold_method = c(NA, 'youden', 'youden', 'youden', 'youden'),
+    scoring_system = c('age', NA, NA, NA, NA),
+    predetermined_threshold = c('60', NA, NA, NA, NA),
+    higher_values_event = c(TRUE, NA, NA, NA, NA)
+  )
+  # For the demonstration, only the first row is run. Please remove the line
+  # below i.e., analysis_details <- analysis_details[1,]
+  analysis_details <- analysis_details[1,]
+  write.csv(analysis_details, paste0(tempdir(), "/analysis_details.csv"),
+            row.names = FALSE, na = "")
+  analysis_details_path <- paste0(tempdir(), "/analysis_details.csv")
+  # verbose is TRUE as default. If you do not want the outcome displayed, you can
+  # change this to FALSE, as shown here
+  results <- create_specific_input_parameters(
+    generic_input_parameters = generic_input_parameters,
+    analysis_details_path = analysis_details_path, verbose = FALSE)
+  specific_input_parameters <- results$specific_input_parameters
+  # Set a seed for reproducibility - Please see details above
+  set.seed(generic_input_parameters$seed)
+  prepared_datasets <- {prepare_datasets(
+    df = generic_input_parameters$df,
+    simulations = generic_input_parameters$simulations,
+    outcome_name = generic_input_parameters$outcome_name,
+    outcome_type = generic_input_parameters$outcome_type,
+    outcome_time = generic_input_parameters$outcome_time,
+    verbose = FALSE)}
+  results <- compile_results(generic_input_parameters, specific_input_parameters,
+                             prepared_datasets, verbose = FALSE)
+  # Results html_file_location
+  results$html_file_location
 }
-# Generic input parameters for time-to-event outcomes ####
-generic_input_parameters <- create_generic_input_parameters(
-  general_title = "Prediction of colon cancer death", simulations = 20,
-  simulations_per_file = 100, seed = 1, df = processed_data$data_processed,
-  outcome_name = "status", outcome_type = "time-to-event",
-  outcome_time = "time", outcome_count = FALSE)
 
-# Specific input parameters ####
-analysis_details <- {cbind.data.frame(
-  name = c('age', 'single_mandatory_predictor', 'complex_models',
-  'complex_models_only_optional_predictors'),
-  analysis_title = c('Simple cut-off based on age', 'Single mandatory predictor (rx)',
-  'Multiple mandatory and optional predictors', 'Multiple optional predictors only'),
-  develop_model = c(FALSE, TRUE, TRUE, TRUE),
-  mandatory_predictors = c(NA, 'rx', 'rx; differ; perfor; adhere; extent', NA),
-  optional_predictors = c(NA, NA, 'sex; age; nodes', 'rx; differ; perfor'),
-  mandatory_interactions = c(NA, NA, 'rx; differ; extent', NA),
-  optional_interactions = c(NA, NA, 'perfor; adhere; sex; age; nodes', 'rx; differ'),
-  model_threshold_method = c(NA, 'youden', 'youden', 'youden'),
-  scoring_system = c('age', NA, NA, NA),
-  predetermined_threshold = c('60', NA, NA, NA),
-  higher_values_event = c(TRUE, NA, NA, NA)
-)}
-write.csv(analysis_details, paste0(tempdir(), "/analysis_details.csv"),
-row.names = FALSE, na = "")
-analysis_details_path <- paste0(tempdir(), "/analysis_details.csv")
-specific_input_parameters <- create_specific_input_parameters(
-generic_input_parameters = generic_input_parameters,
-analysis_details_path = analysis_details_path)
-
-# Prepare datasets ####
-prepared_datasets <- {prepare_datasets(
-  df = generic_input_parameters$df,
-  simulations = generic_input_parameters$simulations,
-  seed = generic_input_parameters$seed,
-  outcome_name = generic_input_parameters$outcome_name,
-  outcome_type = generic_input_parameters$outcome_type,
-  outcome_time = generic_input_parameters$outcome_time)}
-
-# Perform the analysis ####
-results <- compile_results(generic_input_parameters, specific_input_parameters,
-prepared_datasets)
-cat(paste0("%\nThe results are available at ", results$html_file_location, "."))
-}
-}

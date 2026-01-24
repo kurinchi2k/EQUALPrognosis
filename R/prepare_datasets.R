@@ -1,4 +1,4 @@
-prepare_datasets <- function(df, simulations, seed = 1, outcome_name, outcome_type, outcome_time = NULL) {
+prepare_datasets <- function(df, simulations, outcome_name, outcome_type, outcome_time = NULL, verbose = TRUE) {
   {
     # Convert this to dataframe
     df <- data.frame(df, check.names = FALSE)
@@ -17,19 +17,13 @@ prepare_datasets <- function(df, simulations, seed = 1, outcome_name, outcome_ty
   }
   # Sampling
   {
-    set.seed(seed)
-    # From that seed sample 10 times as many simulations to allow for seeds that do not work
-    seeds <- sample(1:10000000, 10 * simulations, replace = FALSE)
     simulation_number <- 1
-    seeds_resulting_in_error <- vector(length = 0)
-    working_seeds <- vector(length = 0)
+    working_seeds <- 0
     df_training_list <- list()
     df_only_validation_list <- list()
     df_all_subjects_list <- list()
-    # Start checking the seeds until we reach the required simulations
-    cat("\nWorking seeds\n")
+    if (verbose == TRUE) {cat("\nWorking samples\n")}
     repeat {
-      set.seed(seeds[simulation_number])
       # split_factor identifies the rows to include at random, noting that the same subject may be chosen more than one to achieve the desired sample size
       split_factor <- sample(1:nrow(df), size = nrow(df), replace = TRUE, prob = NULL)
       # Include the rows in split_factor: this results in database df_training of same sample size as original and includes a random sample in that database
@@ -93,18 +87,15 @@ prepare_datasets <- function(df, simulations, seed = 1, outcome_name, outcome_ty
         df_only_validation_list <- c(df_only_validation_list, list(df_only_validation))
         df_all_subjects_list <- c(df_all_subjects_list, list(df_all_subjects))
         # Add to working seeds
-        working_seeds <- c(working_seeds, seeds[simulation_number])
-      } else {
-        # Add to seeds_resulting_in_error
-        seeds_resulting_in_error <- c(seeds_resulting_in_error, seeds[simulation_number])
+        working_seeds <- working_seeds + 1
       }
-      cat(paste0(length(working_seeds), "..."))
+      if (verbose == TRUE) {cat(paste0(working_seeds, "..."))}
       # Exit loop if we have the desired simulations
-      if (length(working_seeds) >= (simulations)) {break}
+      if (working_seeds >= simulations) {break}
       # Go to the next simulation
       simulation_number <- simulation_number + 1
     }
   }
-  output <- list(working_seeds = working_seeds, seeds_resulting_in_error = seeds_resulting_in_error, df_training_list = df_training_list, df_only_validation_list = df_only_validation_list,
+  output <- list(df_training_list = df_training_list, df_only_validation_list = df_only_validation_list,
                  df_all_subjects_list = df_all_subjects_list)
 }

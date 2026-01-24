@@ -1,4 +1,4 @@
-create_generic_input_parameters <- function(general_title = "Enter the title here", simulations = 2000, simulations_per_file = 100, seed = 1, df, outcome_name, outcome_type, outcome_time, outcome_count) {
+create_generic_input_parameters <- function(general_title = "Enter the title here", simulations = 2000, simulations_per_file = 20, seed = NULL, df, outcome_name, outcome_type, outcome_time, outcome_count, verbose = TRUE) {
   # Create a data frame for each aspect
   checks <- {cbind.data.frame(
     aspect = c("general_title", "simulations", "simulations_per_file", "seed", "df", "outcome_name", "outcome_type", "outcome_time", "outcome_count"),
@@ -19,12 +19,14 @@ create_generic_input_parameters <- function(general_title = "Enter the title her
     checks$feedback[checks$aspect == "simulations"] <- "Simulations were not provided or provided in the incorrect format. Therefore, the default simulations of 2000 was assigned."
   }
   if ((is.na(simulations_per_file)) | (! is.numeric(simulations_per_file)) | (simulations_per_file <= 1)) {
-    simulations_per_file <- 100
-    checks$feedback[checks$aspect == "simulations_per_file"] <- "Simulations per file were not provided or provided in the incorrect format. Therefore, the default simulations per file of 100 was assigned."
+    simulations_per_file <- 20
+    checks$feedback[checks$aspect == "simulations_per_file"] <- "Simulations per file were not provided or provided in the incorrect format. Therefore, the default simulations per file of 20 was assigned."
   }
-  if ((is.na(seed)) | (! is.numeric(seed)) | (seed < 1)) {
-    seed <- 1
-    checks$feedback[checks$aspect == "seed"] <- "Seed was not provided or or provided in the incorrect format. Therefore, the default seed of 1 was assigned."
+  if (! is.null(seed)) {
+    if ((is.na(seed)) | (! is.numeric(seed)) | (seed < 1)) {
+      seed <- NULL
+      checks$feedback[checks$aspect == "seed"] <- "Seed was not provided or provided in the incorrect format. Therefore, the default seed of NULL was assigned."
+    }
   }
   # Fatal errors ####
   checks$check_passed[checks$aspect == "df"] <- (is.data.frame(df))
@@ -114,7 +116,8 @@ create_generic_input_parameters <- function(general_title = "Enter the title her
       outcome_count = outcome_count
     )
   }
-  cat(message)
+  if(verbose == TRUE) {cat(message)}
   # Output ####
-  return(generic_input_parameters)
+  output <- list(outcome = message, generic_input_parameters = generic_input_parameters)
+  return(output)
 }
