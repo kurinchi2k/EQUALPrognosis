@@ -56,7 +56,6 @@ Kurinchi Gurusamy
 \code{\link{guess_data_types}}
 }
 \examples{
-\dontrun{
 library(survival)
 # Use the dataset colon as example
 # Select only the survival for these examples (etype == 2)
@@ -84,5 +83,4 @@ metadata <- {data.frame(
 metadata_file_path <- paste0(tempdir(), "/metadata.csv")
 write.csv(metadata, metadata_file_path, row.names = FALSE, na = "")
 processed_data <- process_data(data_file_path, metadata_file_path)
-}
 }

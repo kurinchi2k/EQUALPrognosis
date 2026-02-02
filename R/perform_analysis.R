@@ -44,8 +44,8 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
   } else if (generic_input_parameters$outcome_type == "time-to-event") {
     relevant_parameters <- performance_parameters[performance_parameters$parameters %in% c("accuracy", "c_statistic", "OE_ratio", "calibration_slope", "m_OE_ratio", "m_calibration_slope"),]
   }
-  # Create temporary folder for results storage for managing memory requirements ####
-  create_temporary_folder <- function(simulations, simulations_per_file) {
+  # Create simulation_start_end for managing memory requirements ####
+  create_simulation_start_end <- function(simulations, simulations_per_file) {
     number_of_files = ceiling(simulations/simulations_per_file)
     simulation_start_end <- do.call(rbind.data.frame, lapply(1:number_of_files, function(x) {
       start_simulation <- (x-1)*simulations_per_file+1
@@ -56,16 +56,11 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
       }
       output <- cbind.data.frame(start_simulation = start_simulation, end_simulation = end_simulation)
     }))
-    temp_results_directory <- tempfile(pattern = "results_")
-    placeholder <- dir.create(temp_results_directory)
-    list(simulation_start_end = simulation_start_end, temp_results_directory = temp_results_directory)
   }
-  placeholder <- {create_temporary_folder(
+  simulation_start_end <- {create_simulation_start_end(
     simulations = generic_input_parameters$simulations,
     simulations_per_file = generic_input_parameters$simulations_per_file)}
-  simulation_start_end <- placeholder$simulation_start_end
-  temp_results_directory <- placeholder$temp_results_directory
-  # Calculate the actual and predicted ####
+  # Calculate the apparent performance ####
   {
     actual_predicted_results_apparent <- {calculate_actual_predicted(
       prepared_datasets = prepared_datasets,
@@ -85,10 +80,89 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
       higher_values_event = specific_input_parameters_each_analysis$higher_values_event,
       each_simulation = 1, bootstrap_sample = FALSE, verbose = verbose
     )}
+    apparent_performance <- {cbind.data.frame(
+      performance = "apparent", simulation = NA,
+      calculate_performance(
+        outcome_type = generic_input_parameters$outcome_type,
+        time = actual_predicted_results_apparent$time_all_subjects,
+        outcome_count = generic_input_parameters$outcome_count,
+        actual = actual_predicted_results_apparent$actual_all_subjects,
+        predicted = actual_predicted_results_apparent$predicted_all_subjects,
+        develop_model = specific_input_parameters_each_analysis$develop_model,
+        lp = actual_predicted_results_apparent$lp_all_subjects
+      ))}
+    if (specific_input_parameters_each_analysis$develop_model == TRUE) {
+      apparent_performance_calibration_adjusted <- {
+        cbind.data.frame(
+          performance = "apparent_calibration_adjusted", simulation = NA, calculate_performance(
+            outcome_type = generic_input_parameters$outcome_type,
+            time = actual_predicted_results_apparent$time_all_subjects,
+            outcome_count = generic_input_parameters$outcome_count,
+            actual = actual_predicted_results_apparent$actual_all_subjects,
+            predicted = actual_predicted_results_apparent$predicted_all_subjects_calibration_adjusted,
+            develop_model = specific_input_parameters_each_analysis$develop_model,
+            lp = actual_predicted_results_apparent$lp_all_subjects_calibration_adjusted
+          ))}
+    } else {
+      apparent_performance_calibration_adjusted <- NA
+    }
+    if ((specific_input_parameters_each_analysis$develop_model == TRUE) & (! is.na(specific_input_parameters_each_analysis$mandatory_predictors))) {
+      apparent_performance_adjusted_mandatory_predictors_only <- {
+        cbind.data.frame(
+          performance = "apparent_adjusted_mandatory_predictors_only", simulation = NA, calculate_performance(
+            outcome_type = generic_input_parameters$outcome_type,
+            time = actual_predicted_results_apparent$time_all_subjects,
+            outcome_count = generic_input_parameters$outcome_count,
+            actual = actual_predicted_results_apparent$actual_all_subjects,
+            predicted = actual_predicted_results_apparent$predicted_all_subjects_adjusted_mandatory_predictors_only,
+            develop_model = specific_input_parameters_each_analysis$develop_model,
+            lp = actual_predicted_results_apparent$lp_all_subjects_adjusted_mandatory_predictors_only
+          ))}
+    } else {
+      apparent_performance_adjusted_mandatory_predictors_only <- NA
+    }
+  }
+  # Calculate the bootstrap performance ####
+  {
     if (verbose == TRUE) {cat("\nBootstrap performance...")}
+    bootstrap_performance <- apparent_performance[0,]
+    test_performance <- apparent_performance[0,]
+    out_of_sample_performance <- apparent_performance[0,]
+    if (specific_input_parameters_each_analysis$develop_model == TRUE) {
+      bootstrap_performance_calibration_adjusted <- apparent_performance[0,]
+      test_performance_calibration_adjusted <- apparent_performance[0,]
+      out_of_sample_performance_calibration_adjusted <- apparent_performance[0,]
+    } else {
+      bootstrap_performance_calibration_adjusted <- NA
+      test_performance_calibration_adjusted <- NA
+      out_of_sample_performance_calibration_adjusted <- NA
+    }
+    if ((specific_input_parameters_each_analysis$develop_model == TRUE) & (! is.na(specific_input_parameters_each_analysis$mandatory_predictors))) {
+      bootstrap_performance_adjusted_mandatory_predictors_only <- apparent_performance[0,]
+      test_performance_adjusted_mandatory_predictors_only <- apparent_performance[0,]
+      out_of_sample_performance_adjusted_mandatory_predictors_only <- apparent_performance[0,]
+    } else {
+      bootstrap_performance_adjusted_mandatory_predictors_only <- NA
+      test_performance_adjusted_mandatory_predictors_only <- NA
+      out_of_sample_performance_adjusted_mandatory_predictors_only <- NA
+    }
+    lp_all_subjects <- data.frame(matrix(nrow = length(actual_predicted_results_apparent$lp_all_subjects), ncol = 0))
+    error_calculating_performance <- {cbind.data.frame(
+      outcome = "Unsuccessful",
+      message = "Error in calculating performance",
+      calibration_intercept = NA,
+      calibration_slope = NA,
+      m_calibration_intercept = NA,
+      m_calibration_slope = NA,
+      error = NA,
+      accuracy = NA,
+      c_statistic = NA,
+      OE_ratio = NA,
+      m_OE_ratio = NA
+    )}
     for (i in 1:nrow(simulation_start_end)) {
-      results_each_batch <- lapply(simulation_start_end$start_simulation[i]:simulation_start_end$end_simulation[i], function(each_simulation) {
-        calculate_actual_predicted(
+      results_each_batch <- lapply(simulation_start_end$start_simulation[i]:simulation_start_end$end_simulation[i], function(x) {
+        actual_predicted_results_bootstrap <- try({calculate_actual_predicted(
           prepared_datasets = prepared_datasets,
           outcome_name = generic_input_parameters$outcome_name,
           outcome_type = generic_input_parameters$outcome_type,
@@ -104,187 +178,217 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
           scoring_system = specific_input_parameters_each_analysis$scoring_system,
           predetermined_threshold = specific_input_parameters_each_analysis$predetermined_threshold,
           higher_values_event = specific_input_parameters_each_analysis$higher_values_event,
-          each_simulation = each_simulation, bootstrap_sample = TRUE, verbose = verbose
+          each_simulation = x, bootstrap_sample = TRUE, verbose = verbose
+        )}, silent = TRUE)
+        if (TRUE %in% (class(actual_predicted_results_bootstrap) == "try-error")) {
+          bootstrap_performance <- NA
+          test_performance <- NA
+          out_of_sample_performance <- NA
+          bootstrap_performance_calibration_adjusted <- NA
+          test_performance_calibration_adjusted <- NA
+          out_of_sample_performance_calibration_adjusted <- NA
+          bootstrap_performance_adjusted_mandatory_predictors_only <- NA
+          test_performance_adjusted_mandatory_predictors_only <- NA
+          out_of_sample_performance_adjusted_mandatory_predictors_only <- NA
+          lp_all_subjects <- NA
+        } else {
+          test_performance <- try({cbind.data.frame(
+            performance = "test", simulation = x,
+            calculate_performance(
+              outcome_type = generic_input_parameters$outcome_type,
+              time = actual_predicted_results_bootstrap$time_all_subjects,
+              outcome_count = generic_input_parameters$outcome_count,
+              actual = actual_predicted_results_bootstrap$actual_all_subjects,
+              predicted = actual_predicted_results_bootstrap$predicted_all_subjects,
+              develop_model = specific_input_parameters_each_analysis$develop_model,
+              lp = actual_predicted_results_bootstrap$lp_all_subjects
+            ))}, silent = TRUE)
+          if (TRUE %in% (class(test_performance) == "try-error")) {
+            test_performance <- cbind.data.frame(
+              performance = "test", simulation = x,
+              error_calculating_performance
+            )
+          }
+          bootstrap_performance <- try({cbind.data.frame(
+            performance = "bootstrap", simulation = x,
+            calculate_performance(
+              outcome_type = generic_input_parameters$outcome_type,
+              time = actual_predicted_results_bootstrap$time_training,
+              outcome_count = generic_input_parameters$outcome_count,
+              actual = actual_predicted_results_bootstrap$actual_training,
+              predicted = actual_predicted_results_bootstrap$predicted_training,
+              develop_model = specific_input_parameters_each_analysis$develop_model,
+              lp = actual_predicted_results_bootstrap$lp_training
+            ))}, silent = TRUE)
+          if (TRUE %in% (class(bootstrap_performance) == "try-error")) {
+            bootstrap_performance <- cbind.data.frame(
+              performance = "bootstrap", simulation = x,
+              error_calculating_performance
+            )
+          }
+          out_of_sample_performance <- try({cbind.data.frame(
+            performance = "out_of_sample", simulation = x,
+            calculate_performance(
+              outcome_type = generic_input_parameters$outcome_type,
+              time = actual_predicted_results_bootstrap$time_only_validation,
+              outcome_count = generic_input_parameters$outcome_count,
+              actual = actual_predicted_results_bootstrap$actual_only_validation,
+              predicted = actual_predicted_results_bootstrap$predicted_only_validation,
+              develop_model = specific_input_parameters_each_analysis$develop_model,
+              lp = actual_predicted_results_bootstrap$lp_only_validation
+            ))}, silent = TRUE)
+          if (TRUE %in% (class(out_of_sample_performance) == "try-error")) {
+            out_of_sample_performance <- cbind.data.frame(
+              performance = "out_of_sample", simulation = x,
+              error_calculating_performance
+            )
+          }
+          if (specific_input_parameters_each_analysis$develop_model == TRUE) {
+            test_performance_calibration_adjusted <- try({cbind.data.frame(
+              performance = "test_calibration_adjusted", simulation = x,
+              calculate_performance(
+                outcome_type = generic_input_parameters$outcome_type,
+                time = actual_predicted_results_bootstrap$time_all_subjects,
+                outcome_count = generic_input_parameters$outcome_count,
+                actual = actual_predicted_results_bootstrap$actual_all_subjects,
+                predicted = actual_predicted_results_bootstrap$predicted_all_subjects_calibration_adjusted,
+                develop_model = specific_input_parameters_each_analysis$develop_model,
+                lp = actual_predicted_results_bootstrap$lp_all_subjects_calibration_adjusted
+              ))}, silent = TRUE)
+            if (TRUE %in% (class(test_performance_calibration_adjusted) == "try-error")) {
+              test_performance_calibration_adjusted <- cbind.data.frame(
+                performance = "test_calibration_adjusted", simulation = x,
+                error_calculating_performance
+              )
+            }
+            bootstrap_performance_calibration_adjusted <- try({cbind.data.frame(
+              performance = "bootstrap_calibration_adjusted", simulation = x,
+              calculate_performance(
+                outcome_type = generic_input_parameters$outcome_type,
+                time = actual_predicted_results_bootstrap$time_training,
+                outcome_count = generic_input_parameters$outcome_count,
+                actual = actual_predicted_results_bootstrap$actual_training,
+                predicted = actual_predicted_results_bootstrap$predicted_training_calibration_adjusted,
+                develop_model = specific_input_parameters_each_analysis$develop_model,
+                lp = actual_predicted_results_bootstrap$lp_training_calibration_adjusted
+              ))}, silent = TRUE)
+            if (TRUE %in% (class(bootstrap_performance_calibration_adjusted) == "try-error")) {
+              bootstrap_performance_calibration_adjusted <- cbind.data.frame(
+                performance = "bootstrap_calibration_adjusted", simulation = x,
+                error_calculating_performance
+              )
+            }
+            out_of_sample_performance_calibration_adjusted <- try({cbind.data.frame(
+              performance = "out_of_sample_calibration_adjusted", simulation = x,
+              calculate_performance(
+                outcome_type = generic_input_parameters$outcome_type,
+                time = actual_predicted_results_bootstrap$time_only_validation,
+                outcome_count = generic_input_parameters$outcome_count,
+                actual = actual_predicted_results_bootstrap$actual_only_validation,
+                predicted = actual_predicted_results_bootstrap$predicted_only_validation_calibration_adjusted,
+                develop_model = specific_input_parameters_each_analysis$develop_model,
+                lp = actual_predicted_results_bootstrap$lp_only_validation_calibration_adjusted
+              ))}, silent = TRUE)
+            if (TRUE %in% (class(out_of_sample_performance_calibration_adjusted) == "try-error")) {
+              out_of_sample_performance_calibration_adjusted <- cbind.data.frame(
+                performance = "out_of_sample_calibration_adjusted", simulation = x,
+                error_calculating_performance
+              )
+            }
+          } else {
+            bootstrap_performance_calibration_adjusted <- NA
+            test_performance_calibration_adjusted <- NA
+            out_of_sample_performance_calibration_adjusted <- NA
+          }
+          if ((specific_input_parameters_each_analysis$develop_model == TRUE) & (! is.na(specific_input_parameters_each_analysis$mandatory_predictors))) {
+            test_performance_adjusted_mandatory_predictors_only <- try({cbind.data.frame(
+              performance = "test_adjusted_mandatory_predictors_only", simulation = x,
+              calculate_performance(
+                outcome_type = generic_input_parameters$outcome_type,
+                time = actual_predicted_results_bootstrap$time_all_subjects,
+                outcome_count = generic_input_parameters$outcome_count,
+                actual = actual_predicted_results_bootstrap$actual_all_subjects,
+                predicted = actual_predicted_results_bootstrap$predicted_all_subjects_adjusted_mandatory_predictors_only,
+                develop_model = specific_input_parameters_each_analysis$develop_model,
+                lp = actual_predicted_results_bootstrap$lp_all_subjects_adjusted_mandatory_predictors_only
+              ))}, silent = TRUE)
+            if (TRUE %in% (class(test_performance_adjusted_mandatory_predictors_only) == "try-error")) {
+              test_performance_adjusted_mandatory_predictors_only <- cbind.data.frame(
+                performance = "test_adjusted_mandatory_predictors_only", simulation = x,
+                error_calculating_performance
+              )
+            }
+            bootstrap_performance_adjusted_mandatory_predictors_only <- try({cbind.data.frame(
+              performance = "bootstrap_adjusted_mandatory_predictors_only", simulation = x,
+              calculate_performance(
+                outcome_type = generic_input_parameters$outcome_type,
+                time = actual_predicted_results_bootstrap$time_training,
+                outcome_count = generic_input_parameters$outcome_count,
+                actual = actual_predicted_results_bootstrap$actual_training,
+                predicted = actual_predicted_results_bootstrap$predicted_training_adjusted_mandatory_predictors_only,
+                develop_model = specific_input_parameters_each_analysis$develop_model,
+                lp = actual_predicted_results_bootstrap$lp_training_adjusted_mandatory_predictors_only
+              ))}, silent = TRUE)
+            if (TRUE %in% (class(bootstrap_performance_adjusted_mandatory_predictors_only) == "try-error")) {
+              bootstrap_performance_adjusted_mandatory_predictors_only <- cbind.data.frame(
+                performance = "bootstrap_adjusted_mandatory_predictors_only", simulation = x,
+                error_calculating_performance
+              )
+            }
+            out_of_sample_performance_adjusted_mandatory_predictors_only <- try({cbind.data.frame(
+              performance = "out_of_sample_adjusted_mandatory_predictors_only", simulation = x,
+              calculate_performance(
+                outcome_type = generic_input_parameters$outcome_type,
+                time = actual_predicted_results_bootstrap$time_only_validation,
+                outcome_count = generic_input_parameters$outcome_count,
+                actual = actual_predicted_results_bootstrap$actual_only_validation,
+                predicted = actual_predicted_results_bootstrap$predicted_only_validation_adjusted_mandatory_predictors_only,
+                develop_model = specific_input_parameters_each_analysis$develop_model,
+                lp = actual_predicted_results_bootstrap$lp_only_validation_adjusted_mandatory_predictors_only
+              ))}, silent = TRUE)
+            if (TRUE %in% (class(out_of_sample_performance_adjusted_mandatory_predictors_only) == "try-error")) {
+              out_of_sample_performance_adjusted_mandatory_predictors_only <- cbind.data.frame(
+                performance = "out_of_sample_adjusted_mandatory_predictors_only", simulation = x,
+                error_calculating_performance
+              )
+            }
+          } else {
+            bootstrap_performance_adjusted_mandatory_predictors_only <- NA
+            test_performance_adjusted_mandatory_predictors_only <- NA
+            out_of_sample_performance_adjusted_mandatory_predictors_only <- NA
+          }
+          lp_all_subjects <- actual_predicted_results_bootstrap$lp_all_subjects
+        }
+        output <- list(bootstrap_performance = bootstrap_performance,
+                       test_performance = test_performance,
+                       out_of_sample_performance = out_of_sample_performance,
+                       bootstrap_performance_calibration_adjusted = bootstrap_performance_calibration_adjusted,
+                       test_performance_calibration_adjusted = test_performance_calibration_adjusted,
+                       out_of_sample_performance_calibration_adjusted = out_of_sample_performance_calibration_adjusted,
+                       bootstrap_performance_adjusted_mandatory_predictors_only = bootstrap_performance_adjusted_mandatory_predictors_only,
+                       test_performance_adjusted_mandatory_predictors_only = test_performance_adjusted_mandatory_predictors_only,
+                       out_of_sample_performance_adjusted_mandatory_predictors_only = out_of_sample_performance_adjusted_mandatory_predictors_only,
+                       lp_all_subjects = lp_all_subjects
         )
       })
-      placeholder <- saveRDS(results_each_batch, paste0(temp_results_directory, "/batch_", i, ".rds"))
+      bootstrap_performance <- rbind.data.frame(bootstrap_performance, do.call(rbind.data.frame, lapply(results_each_batch,"[[",1)))
+      test_performance <- rbind.data.frame(test_performance, do.call(rbind.data.frame, lapply(results_each_batch,"[[",2)))
+      out_of_sample_performance <- rbind.data.frame(out_of_sample_performance, do.call(rbind.data.frame, lapply(results_each_batch,"[[",3)))
+      if (specific_input_parameters_each_analysis$develop_model == TRUE) {
+        bootstrap_performance_calibration_adjusted <- rbind.data.frame(bootstrap_performance_calibration_adjusted, do.call(rbind.data.frame, lapply(results_each_batch,"[[",4)))
+        test_performance_calibration_adjusted <- rbind.data.frame(test_performance_calibration_adjusted, do.call(rbind.data.frame, lapply(results_each_batch,"[[",5)))
+        out_of_sample_performance_calibration_adjusted <- rbind.data.frame(out_of_sample_performance_calibration_adjusted, do.call(rbind.data.frame, lapply(results_each_batch,"[[",6)))
+      }
+      if ((specific_input_parameters_each_analysis$develop_model == TRUE) & (! is.na(specific_input_parameters_each_analysis$mandatory_predictors))) {
+        bootstrap_performance_adjusted_mandatory_predictors_only <- rbind.data.frame(bootstrap_performance_adjusted_mandatory_predictors_only, do.call(rbind.data.frame, lapply(results_each_batch,"[[",7)))
+        test_performance_adjusted_mandatory_predictors_only <- rbind.data.frame(test_performance_adjusted_mandatory_predictors_only, do.call(rbind.data.frame, lapply(results_each_batch,"[[",8)))
+        out_of_sample_performance_adjusted_mandatory_predictors_only <- rbind.data.frame(out_of_sample_performance_adjusted_mandatory_predictors_only, do.call(rbind.data.frame, lapply(results_each_batch,"[[",9)))
+      }
+      lp_all_subjects <- cbind.data.frame(lp_all_subjects, do.call(cbind.data.frame, lapply(results_each_batch, function(z) {if (length(z[[10]] > 1)) {z[[10]]}})))
+      rm(results_each_batch)
+      gc(verbose = FALSE, reset = TRUE)
     }
-    if (verbose == TRUE) {cat("\nCompiling the results from saved files and calculating the performance...")}
-    actual_predicted_results_bootstrap <- do.call(c, lapply(1:nrow(simulation_start_end), function(x) {
-      readRDS(paste0(temp_results_directory, "/batch_", x, ".rds"))
-    }))
-    unlink(temp_results_directory, recursive = TRUE, force = TRUE)
-  }
-  # Calculate performance ####
-  {
-    apparent_performance <- {cbind.data.frame(
-      performance = "apparent", simulation = NA,
-      calculate_performance(
-        outcome_type = generic_input_parameters$outcome_type,
-        time = actual_predicted_results_apparent$time_all_subjects,
-        outcome_count = generic_input_parameters$outcome_count,
-        actual = actual_predicted_results_apparent$actual_all_subjects,
-        predicted = actual_predicted_results_apparent$predicted_all_subjects,
-        develop_model = specific_input_parameters_each_analysis$develop_model,
-        lp = actual_predicted_results_apparent$lp_all_subjects
-      ))}
-    test_performance <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "test", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_all_subjects,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_all_subjects,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_all_subjects,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_all_subjects
-        ))}
-    }))
-    bootstrap_performance <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "bootstrap", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_training,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_training,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_training,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_training
-        ))}
-    }))
-    out_of_sample_performance <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "out_of_sample", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_only_validation,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_only_validation,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_only_validation,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_only_validation
-        ))}
-    }))
-  }
-  # Calculate the average lp of all_subjects from each simulation
-  average_lp_all_subjects <- unlist(rowMeans(do.call(cbind.data.frame, lapply(actual_predicted_results_bootstrap, function(x) {x$lp_all_subjects})), na.rm = TRUE))
-  # Calculate calibration-adjusted performance ####
-  if (specific_input_parameters_each_analysis$develop_model == TRUE) {
-    apparent_performance_calibration_adjusted <- {
-      cbind.data.frame(
-        performance = "apparent_calibration_adjusted", simulation = NA,calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_apparent$time_all_subjects,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_apparent$actual_all_subjects,
-          predicted = actual_predicted_results_apparent$predicted_all_subjects_calibration_adjusted,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_apparent$lp_all_subjects_calibration_adjusted
-        ))}
-    test_performance_calibration_adjusted <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "test_calibration_adjusted", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_all_subjects,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_all_subjects,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_all_subjects_calibration_adjusted,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_all_subjects_calibration_adjusted
-        ))}
-    }))
-    bootstrap_performance_calibration_adjusted <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "bootstrap_calibration_adjusted", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_training,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_training,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_training_calibration_adjusted,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_training_calibration_adjusted
-        ))}
-    }))
-    out_of_sample_performance_calibration_adjusted <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "out_of_sample_calibration_adjusted", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_only_validation,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_only_validation,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_only_validation_calibration_adjusted,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_only_validation_calibration_adjusted
-        ))}
-    }))
-  } else {
-    apparent_performance_calibration_adjusted <- NA
-    bootstrap_performance_calibration_adjusted <- NA
-    test_performance_calibration_adjusted <- NA
-    out_of_sample_performance_calibration_adjusted <- NA
-  }
-  # Calculate adjusted mandatory predictors only performance ####
-  if ((specific_input_parameters_each_analysis$develop_model == TRUE) & (! is.na(specific_input_parameters_each_analysis$mandatory_predictors))) {
-    apparent_performance_adjusted_mandatory_predictors_only <- {
-      cbind.data.frame(
-        performance = "apparent_adjusted_mandatory_predictors_only", simulation = NA, calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_apparent$time_all_subjects,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_apparent$actual_all_subjects,
-          predicted = actual_predicted_results_apparent$predicted_all_subjects_adjusted_mandatory_predictors_only,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_apparent$lp_all_subjects_adjusted_mandatory_predictors_only
-        ))}
-    test_performance_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "test_adjusted_mandatory_predictors_only", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_all_subjects,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_all_subjects,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_all_subjects_adjusted_mandatory_predictors_only,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_all_subjects_adjusted_mandatory_predictors_only
-        ))}
-    }))
-    bootstrap_performance_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "bootstrap_adjusted_mandatory_predictors_only", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_training,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_training,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_training_adjusted_mandatory_predictors_only,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_training_adjusted_mandatory_predictors_only
-        ))}
-    }))
-    out_of_sample_performance_adjusted_mandatory_predictors_only <- do.call(rbind.data.frame, lapply(1:length(actual_predicted_results_bootstrap), function(x) {
-      {cbind.data.frame(
-        performance = "out_of_sample_adjusted_mandatory_predictors_only", simulation = x,
-        calculate_performance(
-          outcome_type = generic_input_parameters$outcome_type,
-          time = actual_predicted_results_bootstrap[[x]]$time_only_validation,
-          outcome_count = generic_input_parameters$outcome_count,
-          actual = actual_predicted_results_bootstrap[[x]]$actual_only_validation,
-          predicted = actual_predicted_results_bootstrap[[x]]$predicted_only_validation_adjusted_mandatory_predictors_only,
-          develop_model = specific_input_parameters_each_analysis$develop_model,
-          lp = actual_predicted_results_bootstrap[[x]]$lp_only_validation_adjusted_mandatory_predictors_only
-        ))}
-    }))
-  } else {
-    apparent_performance_adjusted_mandatory_predictors_only <- NA
-    bootstrap_performance_adjusted_mandatory_predictors_only <- NA
-    test_performance_adjusted_mandatory_predictors_only <- NA
-    out_of_sample_performance_adjusted_mandatory_predictors_only <- NA
+    average_lp_all_subjects <- rowMeans(lp_all_subjects, na.rm = TRUE)
   }
   # Calculate optimism ####
   optimism <- cbind.data.frame(
@@ -333,18 +437,18 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
           placeholder[placeholder <= 0] <- 0.000001
           placeholder[placeholder >= 1] <- 1- 0.000001
           placeholder <- qlogis(placeholder)
-          performance_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+          performance_summary <- cbind.data.frame(length(placeholder), plogis(mean(placeholder)), t(plogis(bca(placeholder))))
         } else if (relevant_parameters$transformation[x] == "log") {
           placeholder[placeholder <= 0] <- 0.000001
           placeholder <- log(placeholder)
-          performance_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+          performance_summary <- cbind.data.frame(length(placeholder), exp(mean(placeholder)), t(exp(bca(placeholder))))
         }
       } else {
-        performance_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+        performance_summary <- cbind.data.frame(length(placeholder), mean(placeholder), t(bca(placeholder)))
       }
-      colnames(performance_summary) <- c("est", "lci", "uci")
+      colnames(performance_summary) <- c("n", "est", "lci", "uci")
     } else {
-      performance_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+      performance_summary <- cbind.data.frame(n = NA, est = NA, lci = NA, uci = NA)
     }
     return(performance_summary)
   })
@@ -359,18 +463,18 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
           placeholder[placeholder <= 0] <- 0.000001
           placeholder[placeholder >= 1] <- 1- 0.000001
           placeholder <- qlogis(placeholder)
-          performance_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+          performance_summary <- cbind.data.frame(length(placeholder), plogis(mean(placeholder)), t(plogis(bca(placeholder))))
         } else if (relevant_parameters$transformation[x] == "log") {
           placeholder[placeholder <= 0] <- 0.000001
           placeholder <- log(placeholder)
-          performance_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+          performance_summary <- cbind.data.frame(length(placeholder), exp(mean(placeholder)), t(exp(bca(placeholder))))
         }
       } else {
-        performance_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+        performance_summary <- cbind.data.frame(length(placeholder), mean(placeholder), t(bca(placeholder)))
       }
-      colnames(performance_summary) <- c("est", "lci", "uci")
+      colnames(performance_summary) <- c("n", "est", "lci", "uci")
     } else {
-      performance_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+      performance_summary <- cbind.data.frame(n = NA, est = NA, lci = NA, uci = NA)
     }
     return(performance_summary)
   })
@@ -424,18 +528,18 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
             placeholder[placeholder <= 0] <- 0.000001
             placeholder[placeholder >= 1] <- 1- 0.000001
             placeholder <- qlogis(placeholder)
-            performance_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+            performance_summary <- cbind.data.frame(length(placeholder), plogis(mean(placeholder)), t(plogis(bca(placeholder))))
           } else if (relevant_parameters$transformation[x] == "log") {
             placeholder[placeholder <= 0] <- 0.000001
             placeholder <- log(placeholder)
-            performance_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+            performance_summary <- cbind.data.frame(length(placeholder), exp(mean(placeholder)), t(exp(bca(placeholder))))
           }
         } else {
-          performance_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+          performance_summary <- cbind.data.frame(length(placeholder), mean(placeholder), t(bca(placeholder)))
         }
-        colnames(performance_summary) <- c("est", "lci", "uci")
+        colnames(performance_summary) <- c("n","est", "lci", "uci")
       } else {
-        performance_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+        performance_summary <- cbind.data.frame(n = NA, est = NA, lci = NA, uci = NA)
       }
       return(performance_summary)
     })
@@ -514,18 +618,18 @@ perform_analysis <- function(generic_input_parameters, specific_input_parameters
               placeholder[placeholder <= 0] <- 0.000001
               placeholder[placeholder >= 1] <- 1- 0.000001
               placeholder <- qlogis(placeholder)
-              performance_summary <- cbind.data.frame(plogis(mean(placeholder)), t(plogis(bca(placeholder))))
+              performance_summary <- cbind.data.frame(length(placeholder), plogis(mean(placeholder)), t(plogis(bca(placeholder))))
             } else if (relevant_parameters$transformation[x] == "log") {
               placeholder[placeholder <= 0] <- 0.000001
               placeholder <- log(placeholder)
-              performance_summary <- cbind.data.frame(exp(mean(placeholder)), t(exp(bca(placeholder))))
+              performance_summary <- cbind.data.frame(length(placeholder), exp(mean(placeholder)), t(exp(bca(placeholder))))
             }
           } else {
-            performance_summary <- cbind.data.frame(mean(placeholder), t(bca(placeholder)))
+            performance_summary <- cbind.data.frame(length(placeholder), mean(placeholder), t(bca(placeholder)))
           }
-          colnames(performance_summary) <- c("est", "lci", "uci")
+          colnames(performance_summary) <- c("n","est", "lci", "uci")
         } else {
-          performance_summary <- cbind.data.frame(est = NA, lci = NA, uci = NA)
+          performance_summary <- cbind.data.frame(n = NA, est = NA, lci = NA, uci = NA)
         }
         return(performance_summary)
       })

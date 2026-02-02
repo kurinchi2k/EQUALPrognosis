@@ -92,103 +92,113 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
     coef_table <- coef_table[! is.na(coef_table$coef),]
     coef_table <- coef_table[coef_table$names %in% c(variables_in_model_summary$names_in_coefficient_table, "(Intercept)"),]
     coef_table$interaction_term <- (nchar(coef_table$names) != nchar(gsub(":", "", coef_table$names)))
-    training_model_frame <- model.frame(regression_model)
-    training_model_matrix <- model.matrix(regression_model)
-    variables_in_model_frame <- unique(variables_in_model_summary$name[match(coef_table$names[coef_table$interaction_term == FALSE],
-                                                                             variables_in_model_summary$names_in_coefficient_table)])
-    variables_in_model_frame <- variables_in_model_frame[! is.na(variables_in_model_frame)]
-    variables_in_model_matrix <- coef_table$names[coef_table$interaction_term == FALSE]
-    new_data_model_matrix <- do.call(cbind.data.frame, lapply(1:length(variables_in_model_frame), function(x) {
-      unprocessed_data <- new_data[,variables_in_model_frame[x]]
-      variable_type <- variables_in_model_summary$type[match(variables_in_model_frame[x], variables_in_model_summary$name)]
-      if (variable_type == "numeric") {
-        output <- cbind.data.frame(unprocessed_data)
-        colnames(output) <- variables_in_model_summary$revised_name[match(variables_in_model_frame[x], variables_in_model_summary$name)]
-      } else {
-        # If there are unrecognised levels in the data compared to that used in training, this should be changed to NA as the prediction cannot be made
-        part_processed_data <- factor(as.character(unprocessed_data), levels = levels(training_model_frame[,variables_in_model_frame[x]]), ordered = (variable_type == "ordinal"))
-        look_up_table <- variables_in_model_summary[variables_in_model_summary$name %in% variables_in_model_frame[x],]
-        matching_columns <- look_up_table$names_in_coefficient_table[look_up_table$names_in_coefficient_table %in% coef_table$names]
-        matching_rows <- match(look_up_table$levels, part_processed_data)
-        look_up_table <- cbind.data.frame(
-          look_up_table,
-          training_model_matrix[matching_rows, matching_columns]
-        )
-        colnames(look_up_table)[6:ncol(look_up_table)] <- matching_columns
-        output <- data.frame(matrix(nrow = length(part_processed_data), ncol = length(matching_columns)))
-        colnames(output) <- matching_columns
-        for (i in 1:nrow(look_up_table)) {
-          output[(!is.na(part_processed_data)) & (part_processed_data == look_up_table$levels[i]),] <- look_up_table[i,matching_columns]
+    if (nrow(coef_table) > 0) {
+      training_model_frame <- model.frame(regression_model)
+      training_model_matrix <- model.matrix(regression_model)
+      variables_in_model_frame <- unique(variables_in_model_summary$name[match(coef_table$names[coef_table$interaction_term == FALSE],
+                                                                               variables_in_model_summary$names_in_coefficient_table)])
+      variables_in_model_frame <- variables_in_model_frame[! is.na(variables_in_model_frame)]
+      variables_in_model_matrix <- coef_table$names[coef_table$interaction_term == FALSE]
+      new_data_model_matrix <- do.call(cbind.data.frame, lapply(1:length(variables_in_model_frame), function(x) {
+        unprocessed_data <- new_data[,variables_in_model_frame[x]]
+        variable_type <- variables_in_model_summary$type[match(variables_in_model_frame[x], variables_in_model_summary$name)]
+        if (variable_type == "numeric") {
+          output <- cbind.data.frame(unprocessed_data)
+          colnames(output) <- variables_in_model_summary$revised_name[match(variables_in_model_frame[x], variables_in_model_summary$name)]
+        } else {
+          # If there are unrecognised levels in the data compared to that used in training, this should be changed to NA as the prediction cannot be made
+          part_processed_data <- factor(as.character(unprocessed_data), levels = levels(training_model_frame[,variables_in_model_frame[x]]), ordered = (variable_type == "ordinal"))
+          look_up_table <- variables_in_model_summary[variables_in_model_summary$name %in% variables_in_model_frame[x],]
+          matching_columns <- look_up_table$names_in_coefficient_table[look_up_table$names_in_coefficient_table %in% coef_table$names]
+          matching_rows <- match(look_up_table$levels, training_model_frame[,variables_in_model_frame[x]])
+          look_up_table <- cbind.data.frame(
+            look_up_table,
+            training_model_matrix[matching_rows, matching_columns]
+          )
+          colnames(look_up_table)[6:ncol(look_up_table)] <- matching_columns
+          output <- data.frame(matrix(nrow = length(part_processed_data), ncol = length(matching_columns)))
+          colnames(output) <- matching_columns
+          for (i in 1:nrow(look_up_table)) {
+            output[(!is.na(part_processed_data)) & (part_processed_data == look_up_table$levels[i]),] <- look_up_table[i,matching_columns]
+          }
         }
-      }
-      return(output)
-    }))
-    if (outcome_type != "time-to-event") {
-      new_data_model_matrix <- cbind.data.frame(
-        `(Intercept)` = 1,
-        new_data_model_matrix
-      )
-    }
-    # Include interactions if any
-    new_data_model_matrix <- do.call(cbind.data.frame, lapply(1:nrow(coef_table), function(x) {
-      interaction_terms <- unlist(strsplit(coef_table$names[x], ":"))
-      output <- eval(parse(text = paste0("new_data_model_matrix[,'", interaction_terms,"']", collapse = " * ")))
-    }))
-    colnames(new_data_model_matrix) <- coef_table$names
-    if (outcome_type == "time-to-event") {
-      base_hazard <- basehaz(regression_model, newdata = df_training_complete)
-      closest_time_row <- unlist(lapply(new_data[,outcome_time], function(x) {
-        output <- which.max(base_hazard$time[base_hazard$time <= x])
-        if (length(output) < 1) {output <- 1}
         return(output)
       }))
-      # Cumulative hazard of the first subject at the time point closest to the subject
-      htz <- base_hazard[closest_time_row, 1]
-      variable_values_first_subject <- cbind.data.frame(t(training_model_matrix[1,coef_table$names]))
-      colnames(variable_values_first_subject) <- coef_table$names
-      variable_values_first_subject[1:nrow(new_data),] <- variable_values_first_subject
-      variable_values_new_data_minus_first_subject <- data.frame(new_data_model_matrix[,coef_table$names] -
-                                                                   variable_values_first_subject[,coef_table$names])
-      colnames(variable_values_new_data_minus_first_subject) <- coef_table$names
-      each_term <- lapply(1:nrow(coef_table), function(x) {
-        output <- coef_table$coef[x] * variable_values_new_data_minus_first_subject[,coef_table$names[x]]
-        output[is.na(output)] <- 0
-        return(output)
-      })
-      names(each_term) <- coef_table$names
-      each_term <- do.call(cbind.data.frame, each_term)
-      rxz <- exp(rowSums(each_term))
-      htx <- htz * rxz
-      lp_new_data_untransformed <- htx
-      lp_new_data <- (1-exp(-htx))
-    } else {
-      base_hazard <- NULL
-      closest_time_row <- NULL
-      each_term <- lapply(1:nrow(coef_table), function(x) {
-        output <- coef_table$coef[x] * new_data_model_matrix[,coef_table$names[x]]
-        output[is.na(output)] <- 0
-        return(output)
-      })
-      names(each_term) <- coef_table$names
-      each_term <- do.call(cbind.data.frame, each_term)
-      lp_new_data_untransformed <- rowSums(each_term)
-      if (outcome_type == "binary") {
-        lp_new_data <- plogis(lp_new_data_untransformed)
-      } else if (outcome_count == TRUE) {
-        lp_new_data <- exp(lp_new_data_untransformed)
-      } else {
-        lp_new_data <- lp_new_data_untransformed
+      if (outcome_type != "time-to-event") {
+        new_data_model_matrix <- cbind.data.frame(
+          `(Intercept)` = 1,
+          new_data_model_matrix
+        )
       }
+      # Include interactions if any
+      new_data_model_matrix <- do.call(cbind.data.frame, lapply(1:nrow(coef_table), function(x) {
+        interaction_terms <- unlist(strsplit(coef_table$names[x], ":"))
+        output <- eval(parse(text = paste0("new_data_model_matrix[,'", interaction_terms,"']", collapse = " * ")))
+      }))
+      colnames(new_data_model_matrix) <- coef_table$names
+      if (outcome_type == "time-to-event") {
+        base_hazard <- basehaz(regression_model, newdata = df_training_complete)
+        closest_time_row <- unlist(lapply(new_data[,outcome_time], function(x) {
+          output <- which.max(base_hazard$time[base_hazard$time <= x])
+          if (length(output) < 1) {output <- 1}
+          return(output)
+        }))
+        # Cumulative hazard of the first subject at the time point closest to the subject
+        htz <- base_hazard[closest_time_row, 1]
+        variable_values_first_subject <- cbind.data.frame(t(training_model_matrix[1,coef_table$names]))
+        colnames(variable_values_first_subject) <- coef_table$names
+        variable_values_first_subject[1:nrow(new_data),] <- variable_values_first_subject
+        variable_values_new_data_minus_first_subject <- data.frame(new_data_model_matrix[,coef_table$names] -
+                                                                     variable_values_first_subject[,coef_table$names])
+        colnames(variable_values_new_data_minus_first_subject) <- coef_table$names
+        each_term <- lapply(1:nrow(coef_table), function(x) {
+          output <- coef_table$coef[x] * variable_values_new_data_minus_first_subject[,coef_table$names[x]]
+          output[is.na(output)] <- 0
+          return(output)
+        })
+        names(each_term) <- coef_table$names
+        each_term <- do.call(cbind.data.frame, each_term)
+        rxz <- exp(rowSums(each_term))
+        htx <- htz * rxz
+        lp_new_data_untransformed <- htx
+        lp_new_data <- (1-exp(-htx))
+      } else {
+        base_hazard <- NULL
+        closest_time_row <- NULL
+        each_term <- lapply(1:nrow(coef_table), function(x) {
+          output <- coef_table$coef[x] * new_data_model_matrix[,coef_table$names[x]]
+          output[is.na(output)] <- 0
+          return(output)
+        })
+        names(each_term) <- coef_table$names
+        each_term <- do.call(cbind.data.frame, each_term)
+        lp_new_data_untransformed <- rowSums(each_term)
+        if (outcome_type == "binary") {
+          lp_new_data <- plogis(lp_new_data_untransformed)
+        } else if (outcome_count == TRUE) {
+          lp_new_data <- exp(lp_new_data_untransformed)
+        } else {
+          lp_new_data <- lp_new_data_untransformed
+        }
+      }
+      new_data = data.frame(new_data[,variables_in_model_frame])
+      colnames(new_data) <- variables_in_model_frame
+      output <- list(new_data = new_data,
+                     training_model_matrix = training_model_matrix,
+                     new_data_model_matrix = new_data_model_matrix,
+                     base_hazard = base_hazard, closest_time_row = closest_time_row,
+                     coef_table = coef_table,
+                     lp_new_data_untransformed = lp_new_data_untransformed,
+                     lp_new_data = lp_new_data)
+    } else {
+      output <- list(new_data = new_data,
+                     training_model_matrix = NA,
+                     new_data_model_matrix = NA,
+                     base_hazard = NA, closest_time_row = NA,
+                     coef_table = coef_table,
+                     lp_new_data_untransformed = NA,
+                     lp_new_data = NA)
     }
-    new_data = data.frame(new_data[,variables_in_model_frame])
-    colnames(new_data) <- variables_in_model_frame
-    output <- list(new_data = new_data,
-                   training_model_matrix = training_model_matrix,
-                   new_data_model_matrix = new_data_model_matrix,
-                   base_hazard = base_hazard, closest_time_row = closest_time_row,
-                   coef_table = coef_table,
-                   lp_new_data_untransformed = lp_new_data_untransformed,
-                   lp_new_data = lp_new_data)
   }
   calculate_pROC_threshold <- function(lp, actual) {
     AUROC <- try(pROC::roc(actual,lp,ci = TRUE, ci.alpha = 0.95, print.auc=TRUE, quiet = TRUE), silent = TRUE)
@@ -845,10 +855,10 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           )}
         }
         # Further processing ####
-        if (TRUE %in% c(class(lp_training_with_se) == "try-error", class(lp_all_subjects_with_se) == "try-error", class(lp_all_subjects_with_se) == "try-error")) {
-          lp_training <- manual_lp_training$lp_new_data
-          lp_only_validation <- manual_lp_only_validation$lp_new_data
-          lp_all_subjects <- manual_lp_all_subjects$lp_new_data
+        if (TRUE %in% c(class(lp_training_with_se) == "try-error", class(lp_only_validation_with_se) == "try-error", class(lp_all_subjects_with_se) == "try-error")) {
+          if (! TRUE %in% (class(manual_lp_training) == "try-error")) {lp_training <- manual_lp_training$lp_new_data}
+          if (! TRUE %in% (class(manual_lp_only_validation) == "try-error")) {lp_only_validation <- manual_lp_only_validation$lp_new_data}
+          if (! TRUE %in% (class(manual_lp_all_subjects) == "try-error")) {lp_all_subjects <- manual_lp_all_subjects$lp_new_data}
         } else {
           # Obtain the transformed linear predictors ####
           if (outcome_type != "time-to-event") {
@@ -862,9 +872,9 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           }
           # Impute missing linear predictors from manual predictions ####
           {
-            lp_training[is.na(lp_training)] <- manual_lp_training$lp_new_data[is.na(lp_training)]
-            lp_only_validation[is.na(lp_only_validation)] <- manual_lp_only_validation$lp_new_data[is.na(lp_only_validation)]
-            lp_all_subjects[is.na(lp_all_subjects)] <- manual_lp_all_subjects$lp_new_data[is.na(lp_all_subjects)]
+            if (! TRUE %in% (class(manual_lp_training) == "try-error")) {lp_training[is.na(lp_training)] <- manual_lp_training$lp_new_data[is.na(lp_training)]}
+            if (! TRUE %in% (class(manual_lp_only_validation) == "try-error")) {lp_only_validation[is.na(lp_only_validation)] <- manual_lp_only_validation$lp_new_data[is.na(lp_only_validation)]}
+            if (! TRUE %in% (class(manual_lp_all_subjects) == "try-error")) {lp_all_subjects[is.na(lp_all_subjects)] <- manual_lp_all_subjects$lp_new_data[is.na(lp_all_subjects)]}
           }
         }
         # Now perform intercept-slope adjustment ####
@@ -912,33 +922,60 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           lp_only_validation_calibration_adjusted = NA
           lp_all_subjects_calibration_adjusted = NA
         } else {
-          manual_lp_training_calibration_adjusted <- calculate_intercept_slope_adjusted_lp(
-            outcome_type = outcome_type, outcome_count = outcome_count,
-            intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_training
-          )
-          manual_lp_only_validation_calibration_adjusted <- calculate_intercept_slope_adjusted_lp(
-            outcome_type = outcome_type, outcome_count = outcome_count,
-            intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_only_validation
-          )
-          manual_lp_all_subjects_calibration_adjusted <- calculate_intercept_slope_adjusted_lp(
-            outcome_type = outcome_type, outcome_count = outcome_count,
-            intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_all_subjects
-          )
-          lp_training_calibration_adjusted = manual_lp_all_subjects_calibration_adjusted$lp_new_data
-          lp_only_validation_calibration_adjusted = manual_lp_only_validation_calibration_adjusted$lp_new_data
-          lp_all_subjects_calibration_adjusted = manual_lp_all_subjects_calibration_adjusted$lp_new_data
+          if (! TRUE %in% (class(manual_lp_training) == "try-error")) {
+            manual_lp_training_calibration_adjusted <- calculate_intercept_slope_adjusted_lp(
+              outcome_type = outcome_type, outcome_count = outcome_count,
+              intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_training
+            )
+            lp_training_calibration_adjusted = manual_lp_all_subjects_calibration_adjusted$lp_new_data
+          } else {
+            lp_training_calibration_adjusted = NA
+          }
+          if (! TRUE %in% (class(manual_lp_only_validation) == "try-error")) {
+            manual_lp_only_validation_calibration_adjusted <- calculate_intercept_slope_adjusted_lp(
+              outcome_type = outcome_type, outcome_count = outcome_count,
+              intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_only_validation
+            )
+            lp_only_validation_calibration_adjusted = manual_lp_only_validation_calibration_adjusted$lp_new_data
+          } else {
+            lp_only_validation_calibration_adjusted = NA
+          }
+          if (! TRUE %in% (class(manual_lp_all_subjects) == "try-error")) {
+            manual_lp_all_subjects_calibration_adjusted <- calculate_intercept_slope_adjusted_lp(
+              outcome_type = outcome_type, outcome_count = outcome_count,
+              intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_all_subjects
+            )
+            lp_all_subjects_calibration_adjusted = manual_lp_all_subjects_calibration_adjusted$lp_new_data
+          } else {
+            lp_all_subjects_calibration_adjusted = NA
+          }
         }
         # Adjusted lp (include coefficient of mandatory predictors only) ####
         if (length(mandatory_predictors) > 0) {
-          lp_training_adjusted_mandatory_predictors_only <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+          lp_training_adjusted_mandatory_predictors_only <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
                                                                                 new_data = df_training_complete_copy, regression_model = regression_model,
-                                                                                variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete)$lp_new_data
-          lp_only_validation_adjusted_mandatory_predictors_only <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                                                variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete), silent = TRUE)
+          if (! TRUE %in% (class(lp_training_adjusted_mandatory_predictors_only) == "try-error")) {
+            lp_training_adjusted_mandatory_predictors_only <- lp_training_adjusted_mandatory_predictors_only$lp_new_data
+          } else {
+            lp_training_adjusted_mandatory_predictors_only <- NA
+          }
+          lp_only_validation_adjusted_mandatory_predictors_only <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
                                                                                        new_data = df_only_validation, regression_model = regression_model,
-                                                                                       variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete)$lp_new_data
-          lp_all_subjects_adjusted_mandatory_predictors_only <- calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
+                                                                                       variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete), silent = TRUE)
+          if (! TRUE %in% (class(lp_only_validation_adjusted_mandatory_predictors_only) == "try-error")) {
+            lp_only_validation_adjusted_mandatory_predictors_only <- lp_only_validation_adjusted_mandatory_predictors_only$lp_new_data
+          } else {
+            lp_only_validation_adjusted_mandatory_predictors_only <- NA
+          }
+          lp_all_subjects_adjusted_mandatory_predictors_only <- try(calculate_manual_lp(outcome_type = outcome_type, outcome_count = outcome_count,
                                                                                     new_data = df_all_subjects, regression_model = regression_model,
-                                                                                    variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete)$lp_new_data
+                                                                                    variables_in_model_summary = variables_in_model_summary[variables_in_model_summary$name %in% mandatory_predictors,], df_training_complete = df_training_complete), silent = TRUE)
+          if (! TRUE %in% (class(lp_all_subjects_adjusted_mandatory_predictors_only) == "try-error")) {
+            lp_all_subjects_adjusted_mandatory_predictors_only <- lp_all_subjects_adjusted_mandatory_predictors_only$lp_new_data
+          } else {
+            lp_all_subjects_adjusted_mandatory_predictors_only <- NA
+          }
         } else {
           lp_training_adjusted_mandatory_predictors_only <- NA
           lp_only_validation_adjusted_mandatory_predictors_only <- NA
@@ -1015,7 +1052,8 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
           }
           # Next calibration-adjusted lp ####
           {
-            optimal_threshold_calibration_adjusted <- calculate_pROC_threshold(lp_training_calibration_adjusted, actual_training)
+            if (length(lp_training_calibration_adjusted) > 1) {
+              optimal_threshold_calibration_adjusted <- calculate_pROC_threshold(lp_training_calibration_adjusted, actual_training)
             # If the pROC threshold fails or if the heuristic threshold is the preferred method, try the heuristic threshold based on prevalence
             if (is.na(optimal_threshold_calibration_adjusted$direction) |
                 ((is.na(optimal_threshold_calibration_adjusted$threshold_youden)) & (is.na(optimal_threshold_calibration_adjusted$threshold_topleft))) |
@@ -1059,9 +1097,11 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
               predicted_only_validation_calibration_adjusted <- factor(predicted_only_validation_calibration_adjusted, levels = levels(actual_only_validation))
               predicted_all_subjects_calibration_adjusted <- factor(predicted_all_subjects_calibration_adjusted, levels = levels(actual_all_subjects))
             }
+            }
           }
           # Next adjusted mandatory predictors only lp ####
           {
+            if (length(lp_training_adjusted_mandatory_predictors_only) > 1) {
             optimal_threshold_adjusted_mandatory_predictors_only <- calculate_pROC_threshold(lp_training_adjusted_mandatory_predictors_only, actual_training)
             # If the pROC threshold fails or if the heuristic threshold is the preferred method, try the heuristic threshold based on prevalence
             if (is.na(optimal_threshold_adjusted_mandatory_predictors_only$direction) |
@@ -1105,6 +1145,7 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
               predicted_training_adjusted_mandatory_predictors_only <- factor(predicted_training_adjusted_mandatory_predictors_only, levels = levels(actual_training))
               predicted_only_validation_adjusted_mandatory_predictors_only <- factor(predicted_only_validation_adjusted_mandatory_predictors_only, levels = levels(actual_only_validation))
               predicted_all_subjects_adjusted_mandatory_predictors_only <- factor(predicted_all_subjects_adjusted_mandatory_predictors_only, levels = levels(actual_all_subjects))
+            }
             }
           }
         }
