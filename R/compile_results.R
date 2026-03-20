@@ -246,14 +246,14 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             actual_values <- rep(NA, length(actual))
             actual_values[actual == levels(actual)[1]] <- 0
             actual_values[actual == levels(actual)[2]] <- 1
-            calib_plot <- suppressWarnings(try(valProbggplot(lp, actual_values, allowPerfectPredictions = TRUE), silent = TRUE))
+            calib_plot <- suppressWarnings(try(CalibrationCurves::valProbggplot(lp, actual_values, allowPerfectPredictions = TRUE), silent = TRUE))
             if (TRUE %in% (class(calib_plot) == "try-error")) {
               # If this resulted in error use predtools. However this is based on untransformed lp. The backtransformation is applied at the stage of creating the calibration_plot_data
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
               )
-              calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
+              calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
                 apparent_performance <- c(
@@ -281,14 +281,14 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             }
           } else {
             actual_values <- actual
-            calib_plot <- suppressWarnings(try(genCalCurve(actual_values, lp, family = ifelse(generic_input_parameters$outcome_count, "poisson", "gaussian")), silent = TRUE))
+            calib_plot <- suppressWarnings(try(CalibrationCurves::genCalCurve(actual_values, lp, family = ifelse(generic_input_parameters$outcome_count, "poisson", "gaussian")), silent = TRUE))
             if (TRUE %in% (class(calib_plot) == "try-error")) {
               # If this resulted in error use predtools. However this is based on untransformed lp. The backtransformation is applied at the stage of creating the calibration_plot_data
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
               )
-              calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", title = "Calibration plot"), silent = TRUE))
+              calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
                 apparent_performance <- c(
@@ -325,7 +325,7 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
           )
         }
       } else {
-        calib_plot <- suppressWarnings(try(valProbSurvival(fit = results[[x]]$actual_predicted_results_apparent$regression_model,
+        calib_plot <- suppressWarnings(try(CalibrationCurves::valProbSurvival(fit = results[[x]]$actual_predicted_results_apparent$regression_model,
                                                            valdata = results[[x]]$actual_predicted_results_apparent$df_all_subjects, plotCal = "ggplot"), silent = TRUE))
         if (TRUE %in% (class(calib_plot) == "try-error")) {
           # If this resulted in error use predtools. However this is based on untransformed lp. The backtransformation is applied at the stage of creating the calibration_plot_data
@@ -344,10 +344,10 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
               actual = actual_values,
               predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count),
               follow_up = follow_up)
-            calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", follow_up = "follow_up", pred = "predicted", x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
+            calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", follow_up = "follow_up", pred = "predicted", x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
             # If even this resulted in error, ignore follow-up time
             if (TRUE %in% (class(calib_plot) == "try-error")) {
-              calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
+              calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
               # If even this caused an error indicate so
               if (TRUE %in% (class(calib_plot) == "try-error")) {
                 apparent_performance <- c(
@@ -403,14 +403,14 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             actual_values <- rep(NA, length(actual))
             actual_values[actual == levels(actual)[1]] <- 0
             actual_values[actual == levels(actual)[2]] <- 1
-            calib_plot <- suppressWarnings(try(valProbggplot(lp, actual_values, allowPerfectPredictions = TRUE), silent = TRUE))
+            calib_plot <- suppressWarnings(try(CalibrationCurves::valProbggplot(lp, actual_values, allowPerfectPredictions = TRUE), silent = TRUE))
             if (TRUE %in% (class(calib_plot) == "try-error")) {
               # If this resulted in error use predtools. However this is based on untransformed lp. The backtransformation is applied at the stage of creating the calibration_plot_data
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
               )
-              calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
+              calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
                 test_performance <- c(
@@ -438,14 +438,14 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             }
           } else {
             actual_values <- actual
-            calib_plot <- suppressWarnings(try(genCalCurve(actual_values, lp, family = ifelse(generic_input_parameters$outcome_count, "poisson", "gaussian")), silent = TRUE))
+            calib_plot <- suppressWarnings(try(CalibrationCurves::genCalCurve(actual_values, lp, family = ifelse(generic_input_parameters$outcome_count, "poisson", "gaussian")), silent = TRUE))
             if (TRUE %in% (class(calib_plot) == "try-error")) {
               # If this resulted in error use predtools. However this is based on untransformed lp. The backtransformation is applied at the stage of creating the calibration_plot_data
               calibration_plot_data <- cbind.data.frame(
                 actual = actual_values,
                 predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count)
               )
-              calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", title = "Calibration plot"), silent = TRUE))
+              calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", title = "Calibration plot"), silent = TRUE))
               # If even this resulted in error, indicate this.
               if (TRUE %in% (class(calib_plot) == "try-error")) {
                 test_performance <- c(
@@ -498,10 +498,10 @@ compile_results <- function(generic_input_parameters, specific_input_parameters,
             actual = actual_values,
             predicted = backtransform_lp(lp = lp, outcome_type = generic_input_parameters$outcome_type, outcome_count = generic_input_parameters$outcome_count),
             follow_up = follow_up)
-          calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", follow_up = "follow_up", pred = "predicted", x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
+          calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", follow_up = "follow_up", pred = "predicted", x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
           # If even this resulted in error, ignore follow-up time
           if (TRUE %in% (class(calib_plot) == "try-error")) {
-            calib_plot <- suppressWarnings(try(calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
+            calib_plot <- suppressWarnings(try(predtools::calibration_plot(data = calibration_plot_data, obs = "actual", pred = "predicted", y_lim = c(0, 1), x_lim=c(0, 1), title = "Calibration plot"), silent = TRUE))
             # If even this caused an error indicate so
             if (TRUE %in% (class(calib_plot) == "try-error")) {
               test_performance <- c(

@@ -927,7 +927,7 @@ calculate_actual_predicted <- function(prepared_datasets, outcome_name, outcome_
               outcome_type = outcome_type, outcome_count = outcome_count,
               intercept_slope_adjustment_model = intercept_slope_adjustment_model, manual_lp = manual_lp_training
             )
-            lp_training_calibration_adjusted = manual_lp_all_subjects_calibration_adjusted$lp_new_data
+            lp_training_calibration_adjusted = manual_lp_training_calibration_adjusted$lp_new_data
           } else {
             lp_training_calibration_adjusted = NA
           }
