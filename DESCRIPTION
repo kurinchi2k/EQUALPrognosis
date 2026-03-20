@@ -1,7 +1,7 @@
 Package: EQUALPrognosis
 Title: Analysing Prognostic Studies
-Version: 0.1.2
-Date: 2026-02-02
+Version: 0.1.3
+Date: 2026-03-20
 Authors@R: person("Kurinchi", "Gurusamy", role = c("aut", "cre"), email = "k.gurusamy@ucl.ac.uk")
 Author: Kurinchi Gurusamy [aut, cre]
 Maintainer: Kurinchi Gurusamy <k.gurusamy@ucl.ac.uk>
@@ -11,4 +11,4 @@ Description: Functions that help with analysis of prognostic study data. This al
 License: GPL (>= 3)
 Encoding: UTF-8
 URL: https://sites.google.com/view/equal-group/home
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
